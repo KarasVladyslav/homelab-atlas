@@ -18,9 +18,16 @@ folder over http (any static server):
 python3 -m http.server 8000     # then open http://localhost:8000/
 ```
 
-The toggles in the top-right corner switch the floor (Hardware / Network) and
-the camera (Top / Side). Hold the right mouse button and drag to move around;
-the mouse wheel zooms towards the cursor.
+Navigation lives on the right, editing tools on the left:
+
+- **Camera cube** (top right) turns with the camera, like the ViewCube in 3ds Max:
+  click a face to look from that side (TOP = straight down), click a corner of its
+  top for the isometric view from that corner, drag it to orbit. ⌂ resets the view.
+- **Orbit** anywhere: drag with the middle mouse button (or Ctrl + right button).
+- **Pan**: drag with the right mouse button. **Zoom**: the mouse wheel, towards the cursor.
+- **Floor slider** (right): Plan · Hardware · Network, bottom to top, like an
+  elevator panel. Click a floor, or drag the knob to blend between floors; it snaps to
+  the nearest one on release. Arrow keys work when it has focus.
 
 Or run the image:
 
@@ -30,7 +37,7 @@ docker run --rm -p 8080:8080 ghcr.io/karasvladyslav/homelab-atlas:latest
 
 ## Editing
 
-Press **✎ Edit** to change the plan and hardware floors with the mouse.
+Press **✎** (top left) to edit the plan and hardware floors with the mouse.
 
 On the **Plan** floor (the drawing on the floor: zones such as rooms and cabinets):
 drag a zone to move it, drag its ↔ / ↕ strips to resize it.
@@ -44,7 +51,7 @@ On the **Hardware** floor:
   port; radio ports only to radio ports);
 - Ctrl+Z / Ctrl+Shift+Z undo and redo, Esc cancels a drag.
 
-The 💾 button saves `inventory.yaml`. Edits are made on the YAML text itself, so
+The 💾 button (under ✎) saves `inventory.yaml`. Edits are made on the YAML text itself, so
 the saved file differs from yours only where something changed — comments,
 alignment and order stay as you wrote them, and the Git diff shows just that.
 

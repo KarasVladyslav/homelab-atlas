@@ -9,28 +9,27 @@
 <body>
   <header class="bar">
     <span class="brand">homelab-atlas <span class="title" id="title"></span></span>
-    <div class="controls">
-      <div class="toggle" role="group" aria-label="Mode">
-        <button type="button" id="edit-toggle" aria-pressed="false" title="Edit the hardware floor">✎ Edit</button>
-        <button type="button" id="save" class="save" hidden title="Save inventory.yaml">
-          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M4 4h12l4 4v12H4z M8 4v5h7V4 M7 20v-6h10v6"/></svg>
-          <span class="sr-only">Save</span>
-        </button>
-      </div>
-      <div class="toggle" role="group" aria-label="Floor">
-        <button type="button" data-floor="plan" aria-pressed="false">Plan</button>
-        <button type="button" data-floor="hardware" aria-pressed="true">Hardware</button>
-        <button type="button" data-floor="network" aria-pressed="false">Network</button>
-      </div>
-      <div class="toggle" role="group" aria-label="Camera">
-        <button type="button" data-view="top" aria-pressed="false">Top</button>
-        <button type="button" data-view="side" aria-pressed="true">Side</button>
-      </div>
-    </div>
   </header>
 
-  <main class="stage side" id="stage" data-floor="hardware">
+  <main class="stage" id="stage" data-floor="hardware">
     <div class="scene" id="scene"></div>
+
+    <!-- Editing tools: left. Navigation: right (camera cube top, floor slider middle). -->
+    <div class="toolbar" role="toolbar" aria-label="Editing">
+      <button type="button" id="edit-toggle" class="tool" aria-pressed="false" title="Edit (plan and hardware floors)">✎<span class="sr-only">Edit</span></button>
+      <button type="button" id="save" class="tool save" hidden title="Save inventory.yaml">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M4 4h12l4 4v12H4z M8 4v5h7V4 M7 20v-6h10v6"/></svg>
+        <span class="sr-only">Save</span>
+      </button>
+    </div>
+
+    <div class="nav">
+      <div class="cube-wrap" id="cube" title="Click a face or a corner to look from there · drag to orbit"></div>
+      <button type="button" class="tool home" id="home" title="Reset the view">⌂<span class="sr-only">Reset view</span></button>
+    </div>
+
+    <div class="floors" id="floors" role="slider" tabindex="0" aria-label="Floor" aria-orientation="vertical"></div>
+
     <div class="legend" id="legend" aria-label="Networks"></div>
     <div class="problems" id="problems" hidden aria-live="polite"></div>
     <div class="toast" id="toast" aria-live="polite"></div>

@@ -106,7 +106,16 @@ body { display: flex; flex-direction: column; }
   border-color: var(--button-active);
 }
 
-.stage { position: relative; flex: 1; overflow: hidden; }
+.stage {
+  position: relative; flex: 1; overflow: hidden;
+  /* The camera: tilt (0 = straight down) and spin (around the vertical). Set on the stage so the
+     scene and the camera cube both inherit them; one transition animates both. */
+  --tilt: var(--side-tilt);
+  --spin: var(--side-spin);
+  transition: --tilt var(--camera-duration) var(--camera-ease), --spin var(--camera-duration) var(--camera-ease);
+}
+.stage.orbiting { transition: none; }   /* follow the mouse while orbiting, no easing */
+
 .stage.panning { cursor: grabbing; }
 
 /* ---------- camera ----------
@@ -119,8 +128,6 @@ body { display: flex; flex-direction: column; }
   left: 50%;
   top: 50%;
   transform-style: preserve-3d;
-  --tilt: 0deg;
-  --spin: 0deg;
   --focus-z: 0px;
   --hw-alpha: 1;
   --plan-alpha: 1;
@@ -129,12 +136,12 @@ body { display: flex; flex-direction: column; }
     translate(-50%, -50%) scale(var(--zoom, 1))
     rotateX(var(--tilt)) rotateZ(var(--spin)) translateZ(calc(-1 * var(--focus-z)))
     translate(var(--pan-x, 0px), var(--pan-y, 0px));
-  transition-property: --tilt, --spin, --focus-z, --hw-alpha, --net-alpha, --plan-alpha;
+  transition-property: --focus-z, --hw-alpha, --net-alpha, --plan-alpha;
   transition-duration: var(--camera-duration);
   transition-timing-function: var(--camera-ease);
 }
 
-.stage.side .scene { --tilt: var(--side-tilt); --spin: var(--side-spin); }
+.scene.scrubbing { transition: none; }   /* floor slider being dragged: follow it directly */
 
 .stage[data-floor="network"] .scene {
   --focus-z: var(--net-z);
@@ -360,3 +367,99 @@ rect.netnode { fill-opacity: 1; transition: fill-opacity var(--camera-duration) 
   border: 1px solid var(--label-border);
 }
 .toast-item.error { border-left: 4px solid #e24b4a; }
+
+/* ---------- overlays: tools left, navigation right ---------- */
+.tool {
+  width: 40px; height: 40px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font: inherit; font-size: 18px;
+  color: var(--text);
+  background: var(--button);
+  border: 1px solid var(--label-border);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.tool[aria-pressed="true"] { background: var(--button-active); color: var(--button-active-text); border-color: var(--button-active); }
+.tool[hidden] { display: none; }
+
+.toolbar { position: absolute; left: 16px; top: 16px; display: flex; flex-direction: column; gap: 8px; }
+.toolbar .save { position: relative; }
+.toolbar .save.dirty::after {
+  content: ""; position: absolute; top: 4px; right: 4px;
+  width: 8px; height: 8px; border-radius: 50%; background: #ef9f27;
+}
+
+.nav { position: absolute; right: 16px; top: 12px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+
+/* Camera cube: the same CSS 3D and the same --tilt/--spin as the scene, so it mirrors the camera. */
+.cube-wrap { width: 96px; height: 96px; display: flex; align-items: center; justify-content: center; cursor: grab; touch-action: none; }
+.cube-wrap:active { cursor: grabbing; }
+.cube {
+  --s: 50px;
+  position: relative; width: var(--s); height: var(--s);
+  transform-style: preserve-3d;
+  transform: rotateX(var(--tilt)) rotateZ(var(--spin)) translateZ(calc(var(--s) / -2));
+}
+.cube-face {
+  position: absolute; left: 0; top: 0;
+  width: var(--s); height: var(--s);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px; font-weight: 600; letter-spacing: .04em;
+  color: var(--text-muted);
+  background: var(--face-top);
+  border: 1px solid var(--edge);
+  transform-origin: 0 0;
+  user-select: none;
+  /* Faces turned away from the viewer are neither drawn nor clickable — otherwise Chrome may hand a
+     click on TOP to the BACK face behind it. Every face's front points out of the cube. */
+  backface-visibility: hidden;
+}
+.cube-face:hover, .cube-corner:hover { background: var(--accent); color: #fff; }
+.cube-face.top   { transform: translateZ(var(--s)); }
+/* sides: stand up from an edge (rotateX(-90deg) after lifting by --s), turned to face outward */
+.cube-face.south { top: var(--s); transform: translateZ(var(--s)) rotateX(-90deg); }
+.cube-face.east  { left: var(--s); top: var(--s); transform: rotateZ(-90deg) translateZ(var(--s)) rotateX(-90deg); }
+.cube-face.north { left: var(--s); transform: rotateZ(180deg) translateZ(var(--s)) rotateX(-90deg); }
+.cube-face.west  { transform: rotateZ(90deg) translateZ(var(--s)) rotateX(-90deg); }
+.cube-corner {
+  position: absolute; width: 12px; height: 12px; margin: -6px 0 0 -6px;
+  border-radius: 50%;
+  background: var(--label-bg);
+  border: 1px solid var(--edge);
+  transform: translateZ(calc(var(--s) + 1px));
+}
+.cube-floor {           /* a compass ring on the cube's floor, so the cube reads as standing on it */
+  position: absolute; left: -12px; top: -12px; width: calc(var(--s) + 24px); height: calc(var(--s) + 24px);
+  border-radius: 50%; border: 1px dashed var(--label-border); pointer-events: none;
+}
+.home { width: 32px; height: 32px; font-size: 16px; }
+
+/* Floor slider: an elevator panel on the right. Stops are built from the floor list. */
+.floors {
+  position: absolute; right: 22px; top: 50%; transform: translateY(-50%);
+  width: 120px; height: calc(var(--stops, 3) * 56px);
+  outline: none; touch-action: none; user-select: none;
+}
+.floors .rail {
+  position: absolute; right: 13px; top: 28px; bottom: 28px; width: 4px;
+  border-radius: 2px; background: var(--label-border);
+}
+.floors .stop {
+  position: absolute; right: 0; height: 28px; transform: translateY(-50%);
+  display: flex; align-items: center; gap: 10px;
+  font: inherit; font-size: 13px; color: var(--text-muted);
+  background: none; border: 0; padding: 0; cursor: pointer;
+}
+.floors .stop::after {
+  content: ""; width: 10px; height: 10px; margin-right: 9px; border-radius: 50%;
+  background: var(--bg); border: 2px solid var(--label-border);
+}
+.floors .stop.active { color: var(--text); font-weight: 500; }
+.floors .thumb {
+  position: absolute; right: 5px; width: 20px; height: 20px; margin-top: -10px;
+  border-radius: 50%; background: var(--accent); border: 3px solid var(--bg);
+  box-shadow: 0 0 0 1px var(--accent);
+  cursor: grab; transition: top var(--camera-duration) var(--camera-ease);
+}
+.floors.scrubbing .thumb { transition: none; cursor: grabbing; }
+.floors:focus-visible .thumb { box-shadow: 0 0 0 3px var(--accent); }

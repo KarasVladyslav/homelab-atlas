@@ -286,21 +286,220 @@
     applyView();
   }
 
-  function press(attr, value) {
-    for (const b of document.querySelectorAll(`[data-${attr}]`)) {
-      b.setAttribute('aria-pressed', String(b.dataset[attr] === value));
-    }
+  // ---------------------------------------------------------------- camera
+  //
+  // The camera is two angles on the stage, --tilt (0° = straight down, up to 80°) and --spin
+  // (around the vertical). The scene and the camera cube both read them, and the stage animates
+  // them over --camera-duration — except while orbiting, when they follow the mouse directly.
+  const SIDE = { tilt: 58, spin: 45 };
+  const cam = { ...SIDE };
+  const VIEWS = {                               // what clicking a part of the camera cube does
+    top:     { tilt: 0,  spin: 0 },
+    south:   { tilt: 62, spin: 0 },     east:    { tilt: 62, spin: 90 },
+    north:   { tilt: 62, spin: 180 },   west:    { tilt: 62, spin: -90 },
+    'iso-se': SIDE,                     'iso-sw': { tilt: 58, spin: -45 },
+    'iso-ne': { tilt: 58, spin: 135 },  'iso-nw': { tilt: 58, spin: -135 },
+  };
+
+  function setCamera(tilt, spin, animate) {
+    // Spin is free-running: always take the short way round to the target angle.
+    const delta = ((((spin - cam.spin) % 360) + 540) % 360) - 180;
+    cam.tilt = Math.min(80, Math.max(0, tilt));
+    cam.spin = cam.spin + delta;
+    stage.classList.toggle('orbiting', !animate);
+    stage.style.setProperty('--tilt', cam.tilt + 'deg');
+    stage.style.setProperty('--spin', cam.spin + 'deg');
   }
 
-  for (const b of document.querySelectorAll('[data-view]')) {
-    b.addEventListener('click', () => { stage.classList.toggle('side', b.dataset.view === 'side'); press('view', b.dataset.view); });
+  function resetView() {
+    view.zoom = 1; view.panX = 0; view.panY = 0;
+    applyView();
+    setCamera(SIDE.tilt, SIDE.spin, true);
   }
+
+  // Orbit: middle button, or Ctrl + right / left button, anywhere on the stage — or drag the cube.
+  let orbit = null;
+  function startOrbit(e) {
+    orbit = { x: e.clientX, y: e.clientY, moved: false, id: e.pointerId, source: e.currentTarget };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  }
+  function moveOrbit(e) {
+    if (!orbit) return false;
+    const dx = e.clientX - orbit.x, dy = e.clientY - orbit.y;
+    if (!orbit.moved && Math.hypot(dx, dy) < 4) return true;
+    orbit.moved = true;
+    orbit.x = e.clientX; orbit.y = e.clientY;
+    setCamera(cam.tilt - dy * 0.3, cam.spin + dx * 0.4, false);
+    return true;
+  }
+  function endOrbit() {
+    const o = orbit;
+    orbit = null;
+    stage.classList.remove('orbiting');
+    return o;
+  }
+
+  stage.addEventListener('pointerdown', e => {
+    if (e.button === 1 || (e.ctrlKey && (e.button === 0 || e.button === 2))) {
+      e.preventDefault();                      // no Windows autoscroll on the middle button
+      e.stopImmediatePropagation();            // and no pan / edit for this press
+      startOrbit(e);
+    }
+  }, true);
+  // Capture phase on the stage, but only for an orbit started on the stage (the cube handles its own).
+  const stageOrbit = () => orbit && orbit.source === stage;
+  stage.addEventListener('pointermove', e => { if (stageOrbit()) { moveOrbit(e); e.stopImmediatePropagation(); } }, true);
+  stage.addEventListener('pointerup', e => { if (stageOrbit()) { endOrbit(); e.stopImmediatePropagation(); } }, true);
+
+  // The camera cube: a little CSS 3D cube in the corner that turns with the camera.
+  function buildCube() {
+    const wrap = document.getElementById('cube');
+    const cube = el('div', 'cube');
+    const face = (cls, text, viewName) => {
+      const f = el('div', 'cube-face ' + cls);
+      f.textContent = text;
+      f.dataset.view = viewName;
+      return f;
+    };
+    const top = face('top', 'TOP', 'top');
+    const s = 50;
+    for (const [x, y, v] of [[s, s, 'iso-se'], [0, s, 'iso-sw'], [s, 0, 'iso-ne'], [0, 0, 'iso-nw']]) {
+      const c = el('div', 'cube-corner');
+      Object.assign(c.style, { left: px(x), top: px(y) });
+      c.dataset.view = v;
+      cube.appendChild(c);
+    }
+    cube.append(el('div', 'cube-floor'), top,
+      face('south', 'FRONT', 'south'), face('east', 'RIGHT', 'east'),
+      face('north', 'BACK', 'north'), face('west', 'LEFT', 'west'));
+    wrap.appendChild(cube);
+
+    wrap.addEventListener('pointerdown', e => { e.stopPropagation(); startOrbit(e); });
+    wrap.addEventListener('pointermove', e => { e.stopPropagation(); moveOrbit(e); });
+    wrap.addEventListener('pointerup', e => {
+      e.stopPropagation();
+      const o = endOrbit();
+      if (o && !o.moved) {                     // a click, not a drag: go to that view
+        const hit = document.elementFromPoint(e.clientX, e.clientY);
+        const v = hit && hit.closest('[data-view]');
+        if (v && VIEWS[v.dataset.view]) setCamera(VIEWS[v.dataset.view].tilt, VIEWS[v.dataset.view].spin, true);
+      }
+    });
+    document.getElementById('home').addEventListener('click', resetView);
+  }
+
+  // ---------------------------------------------------------------- floors
+  //
+  // An elevator panel on the right: one stop per floor, bottom to top. Dragging the thumb blends
+  // the floors continuously (camera height and fades); releasing snaps to the nearest floor.
+  const FLOORS = [
+    { id: 'plan', name: 'Plan' },
+    { id: 'hardware', name: 'Hardware' },
+    { id: 'network', name: 'Network' },
+  ];
+  const floorsEl = document.getElementById('floors');
+  const STOP = 56;
+  const stopY = i => (FLOORS.length - 1 - i) * STOP + STOP / 2;     // px from the panel top
+
   function setFloor(floor) {
     stage.dataset.floor = floor;
-    press('floor', floor);
+    const i = FLOORS.findIndex(f => f.id === floor);
+    floorsEl.setAttribute('aria-valuenow', i);
+    floorsEl.setAttribute('aria-valuetext', FLOORS[i].name);
+    floorsEl.querySelector('.thumb').style.top = px(stopY(i));
+    for (const b of floorsEl.querySelectorAll('.stop')) b.classList.toggle('active', b.dataset.floor === floor);
     document.dispatchEvent(new CustomEvent('atlas:floor', { detail: floor }));
   }
-  for (const b of document.querySelectorAll('[data-floor]')) b.addEventListener('click', () => setFloor(b.dataset.floor));
+
+  // Continuous floor position t (0 = plan, 1 = hardware, 2 = network) → camera height and fades,
+  // the same values the CSS gives each floor, interpolated in between.
+  function blendFloors(t) {
+    const netZ = parseFloat(scene.style.getPropertyValue('--net-z')) || 0;
+    const lerp = (a, b, u) => a + (b - a) * u;
+    const DIM = 0.22, GLASS = 0.35, PLAN_HW = 0.45;
+    const u = Math.min(1, Math.max(0, t - 1)), v = Math.min(1, Math.max(0, t));
+    const vars = {
+      '--focus-z': px(u * netZ),
+      '--hw-alpha': t <= 1 ? lerp(PLAN_HW, 1, v) : lerp(1, DIM, u),
+      '--plan-alpha': lerp(1, DIM, u),
+      '--net-alpha': lerp(GLASS, 1, u),
+    };
+    for (const [k, val] of Object.entries(vars)) scene.style.setProperty(k, val);
+  }
+  function clearBlend() {
+    for (const k of ['--focus-z', '--hw-alpha', '--plan-alpha', '--net-alpha']) scene.style.removeProperty(k);
+  }
+
+  function buildFloors() {
+    floorsEl.style.setProperty('--stops', FLOORS.length);
+    floorsEl.setAttribute('aria-valuemin', 0);
+    floorsEl.setAttribute('aria-valuemax', FLOORS.length - 1);
+    floorsEl.appendChild(el('div', 'rail'));
+    FLOORS.forEach((f, i) => {
+      const b = el('button', 'stop');
+      b.type = 'button';
+      b.textContent = f.name;
+      b.dataset.floor = f.id;
+      b.style.top = px(stopY(i));
+      b.tabIndex = -1;
+      floorsEl.appendChild(b);
+    });
+    floorsEl.appendChild(el('div', 'thumb'));
+
+    let scrub = null;
+    const tAt = clientY => {
+      const r = floorsEl.getBoundingClientRect();
+      const y = clientY - r.top;
+      return Math.min(FLOORS.length - 1, Math.max(0, (FLOORS.length - 1) - (y - STOP / 2) / STOP));
+    };
+    floorsEl.addEventListener('pointerdown', e => {
+      e.stopPropagation();
+      if (e.button !== 0) return;
+      const stop = e.target.closest('.stop');
+      if (stop) { setFloor(stop.dataset.floor); return; }
+      scrub = { id: e.pointerId };
+      floorsEl.setPointerCapture(e.pointerId);
+      floorsEl.classList.add('scrubbing');
+      scene.classList.add('scrubbing');
+      const t = tAt(e.clientY);
+      floorsEl.querySelector('.thumb').style.top = px(stopY(t));
+      blendFloors(t);
+    });
+    floorsEl.addEventListener('pointermove', e => {
+      if (!scrub) return;
+      e.stopPropagation();
+      const t = tAt(e.clientY);
+      floorsEl.querySelector('.thumb').style.top = px(stopY(t));
+      blendFloors(t);
+    });
+    floorsEl.addEventListener('pointerup', e => {
+      if (!scrub) return;
+      e.stopPropagation();
+      scrub = null;
+      const i = Math.round(tAt(e.clientY));
+      floorsEl.classList.remove('scrubbing');
+      scene.classList.remove('scrubbing');   // from here the CSS takes the last stretch, animated
+      clearBlend();
+      setFloor(FLOORS[i].id);
+    });
+    floorsEl.addEventListener('keydown', e => {
+      const i = FLOORS.findIndex(f => f.id === stage.dataset.floor);
+      const next = e.key === 'ArrowUp' || e.key === 'PageUp' ? i + 1 : e.key === 'ArrowDown' || e.key === 'PageDown' ? i - 1 : null;
+      if (next === null || next < 0 || next >= FLOORS.length) return;
+      e.preventDefault();
+      setFloor(FLOORS[next].id);
+    });
+  }
+
+  // Overlays (tools, cube, slider) are not part of the scene: presses on them must not pan or edit.
+  for (const o of document.querySelectorAll('.toolbar, .nav, .floors')) {
+    o.addEventListener('pointerdown', e => e.stopPropagation());
+    o.addEventListener('wheel', e => e.stopPropagation());
+  }
+
+  buildCube();
+  buildFloors();
+  setFloor(stage.dataset.floor);
   window.addEventListener('resize', () => model && fit(netHeight()));
 
   // ---------------------------------------------------------------- API for the editor
@@ -317,6 +516,8 @@
     decoratePlan: null,
     get floor() { return stage.dataset.floor; },
     setFloor: f => setFloor(f),
+    setCamera, resetView, views: VIEWS,
+    get camera() { return { ...cam }; },
     // Floor point (hardware floor, z = 0) under a screen point. The camera maps a floor point p to
     // screen = stageCentre + zoom · Rx(tilt) · Rz(spin) · (p − floorCentre + pan), so invert that.
     floorAt(clientX, clientY) {
@@ -348,7 +549,7 @@
   let drag = null;
   stage.addEventListener('contextmenu', e => e.preventDefault());
   stage.addEventListener('pointerdown', e => {
-    if (e.button !== 2) return;
+    if (e.button !== 2 || e.ctrlKey) return;
     drag = { x: e.clientX, y: e.clientY, cam: cameraNow() };
     stage.setPointerCapture(e.pointerId);
     stage.classList.add('panning');
