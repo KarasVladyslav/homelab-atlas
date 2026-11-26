@@ -12,8 +12,36 @@ picture follows.
 ## Try it
 
 Open `index.html` in a browser — no build step, no server, works from disk.
-Switch between the side (isometric) and top-down views with the toggle in the
-top-right corner.
+The toggles in the top-right corner switch the floor (Hardware / Network) and
+the camera (Top / Side).
+
+Or run the image:
+
+```sh
+docker run --rm -p 8080:8080 ghcr.io/karasvladyslav/homelab-atlas:latest
+```
+
+To show your own lab, mount your inventory over the example one:
+
+```sh
+docker run --rm -p 8080:8080 \
+  -v "$PWD/my-inventory.js:/usr/share/nginx/html/config/inventory.js:ro" \
+  ghcr.io/karasvladyslav/homelab-atlas:latest
+```
+
+The format is documented at the top of [`config/inventory.js`](config/inventory.js).
+
+## Two floors
+
+- **Hardware** — the floor: zones, boxes, and the cables (copper, fiber, Wi-Fi,
+  BLE) lying on it.
+- **Network** — a glass plate above it: network outlines, logical links and
+  addresses. Every network member points at a hardware node, so the network
+  floor follows the hardware layout and never drifts away from it; dashed
+  threads drop from each address to the box it lives on.
+
+The floor you are not working on fades: the network turns into faint glass
+over the hardware, or the hardware dims under the network.
 
 ## How it renders
 

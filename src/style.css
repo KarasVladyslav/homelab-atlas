@@ -1,12 +1,16 @@
-/* Camera angles are registered so the browser knows they are angles and can animate them.
-   Every face and label reads these two variables, so one transition moves the whole scene. */
-@property --tilt { syntax: '<angle>'; inherits: true; initial-value: 0deg; }
-@property --spin { syntax: '<angle>'; inherits: true; initial-value: 0deg; }
+/* Everything animated is a registered custom property: the browser then knows its type and can
+   interpolate it, and every face, label and plate that reads it moves with one transition. */
+@property --tilt      { syntax: '<angle>';  inherits: true; initial-value: 0deg; }
+@property --spin      { syntax: '<angle>';  inherits: true; initial-value: 0deg; }
+@property --focus-z   { syntax: '<length>'; inherits: true; initial-value: 0px; }
+@property --hw-alpha  { syntax: '<number>'; inherits: true; initial-value: 1; }
+@property --net-alpha { syntax: '<number>'; inherits: true; initial-value: 1; }
 
 :root {
   --bg: #16171a;
-  --grid: #2a2c31;
+  --grid: #24262b;
   --floor-edge: #3a3d44;
+  --zone: #2c2f35;
   --face-top: #3b3e45;
   --face-east: #2f3238;
   --face-south: #26282d;
@@ -15,24 +19,29 @@
   --label-border: #3f434a;
   --text: #ececec;
   --text-muted: #9a9ca3;
-  --cable: #1d9e75;
+  --copper: #1d9e75;
+  --fiber: #ef9f27;
   --wifi: #7f77dd;
+  --ble: #5dcaa5;
+  --glass: #9fc4ee;
   --button: #24262b;
   --button-active: #ececec;
   --button-active-text: #16171a;
 
   --camera-duration: 1s;
   --camera-ease: cubic-bezier(.65, 0, .35, 1);
-  /* Side view: rotate 45° around the vertical, then tilt the floor away. */
-  --side-tilt: 58deg;
-  --side-spin: 45deg;
+  --side-tilt: 58deg;   /* tilt the floor away from the viewer */
+  --side-spin: 45deg;   /* rotate around the vertical */
+  --dim-alpha: .22;     /* the floor you are not working on */
+  --glass-alpha: .35;   /* the network floor while you work on hardware */
 }
 
 @media (prefers-color-scheme: light) {
   :root {
     --bg: #f4f4f2;
-    --grid: #e0dfda;
+    --grid: #e6e5e0;
     --floor-edge: #c9c8c2;
+    --zone: #d3d1c7;
     --face-top: #ffffff;
     --face-east: #e9e8e4;
     --face-south: #d9d8d3;
@@ -41,6 +50,7 @@
     --label-border: #d3d1c7;
     --text: #1f1f1d;
     --text-muted: #6b6a66;
+    --glass: #6aa3dd;
     --button: #ffffff;
     --button-active: #1f1f1d;
     --button-active-text: #ffffff;
@@ -63,14 +73,17 @@ body { display: flex; flex-direction: column; }
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   padding: 12px 16px;
 }
 
 .brand { font-weight: 500; }
+.brand .title { font-weight: 400; color: var(--text-muted); margin-left: 8px; }
 
-.view-toggle { display: flex; gap: 4px; }
+.controls { display: flex; gap: 12px; }
+.toggle { display: flex; gap: 4px; }
 
-.view-toggle button {
+.toggle button {
   font: inherit;
   color: var(--text);
   background: var(--button);
@@ -80,19 +93,18 @@ body { display: flex; flex-direction: column; }
   cursor: pointer;
 }
 
-.view-toggle button[aria-pressed="true"] {
+.toggle button[aria-pressed="true"] {
   background: var(--button-active);
   color: var(--button-active-text);
   border-color: var(--button-active);
 }
 
-.stage {
-  position: relative;
-  flex: 1;
-  overflow: hidden;
-}
+.stage { position: relative; flex: 1; overflow: hidden; }
 
-/* No `perspective` anywhere: that is what keeps the projection orthographic (isometric-like). */
+/* ---------- camera ----------
+   No `perspective` anywhere: that keeps the projection orthographic (isometric-like).
+   translateZ(-focus) is applied first (rightmost), so it slides the world down until the
+   active floor sits in the middle of the screen. */
 .scene {
   position: absolute;
   left: 50%;
@@ -100,42 +112,86 @@ body { display: flex; flex-direction: column; }
   transform-style: preserve-3d;
   --tilt: 0deg;
   --spin: 0deg;
-  transform: translate(-50%, -50%) scale(var(--zoom, 1)) rotateX(var(--tilt)) rotateZ(var(--spin));
-  transition:
-    --tilt var(--camera-duration) var(--camera-ease),
-    --spin var(--camera-duration) var(--camera-ease);
+  --focus-z: 0px;
+  --hw-alpha: 1;
+  --net-alpha: var(--glass-alpha);
+  transform:
+    translate(-50%, -50%) scale(var(--zoom, 1))
+    rotateX(var(--tilt)) rotateZ(var(--spin)) translateZ(calc(-1 * var(--focus-z)));
+  transition-property: --tilt, --spin, --focus-z, --hw-alpha, --net-alpha;
+  transition-duration: var(--camera-duration);
+  transition-timing-function: var(--camera-ease);
 }
 
-.stage.side .scene {
-  --tilt: var(--side-tilt);
-  --spin: var(--side-spin);
+.stage.side .scene { --tilt: var(--side-tilt); --spin: var(--side-spin); }
+
+.stage.on-network .scene {
+  --focus-z: var(--net-z);
+  --hw-alpha: var(--dim-alpha);
+  --net-alpha: 1;
 }
 
-.floor { position: absolute; left: 0; top: 0; }
+/* ---------- floors ----------
+   A floor is a 3D container, so it must never get `opacity` itself: opacity < 1 on a
+   preserve-3d element flattens everything inside it into a picture. Fading is applied to the
+   leaf elements instead (faces, labels, SVG sheets), each reading the floor's alpha. */
+.layer { position: absolute; left: 0; top: 0; transform-style: preserve-3d; }
+.layer.network { transform: translateZ(var(--net-z)); }
 
-.node {
-  position: absolute;
-  transform-style: preserve-3d;
-}
+.layer.hardware .fade { opacity: var(--hw-alpha); }
+.layer.network  .fade { opacity: var(--net-alpha); }
 
-.face {
-  position: absolute;
-  border: 1px solid var(--edge);
-}
+/* Labels of the inactive floor fade out completely (0..1 remap of the floor alpha), then get
+   visibility:hidden once the transition is over: an invisible label is still a vertical plane
+   in 3D and would cut through the other floor. Showing is immediate, hiding waits for the fade. */
+.layer.hardware .label.fade { opacity: calc((var(--hw-alpha) - var(--dim-alpha)) / (1 - var(--dim-alpha))); }
+.layer.network  .label.fade { opacity: calc((var(--net-alpha) - var(--glass-alpha)) / (1 - var(--glass-alpha))); }
+.label { transition: visibility 0s; }
+.stage.on-network .layer.hardware .label,
+.stage:not(.on-network) .layer.network .label { visibility: hidden; transition-delay: var(--camera-duration); }
 
+.stage.on-network .layer.hardware,
+.stage:not(.on-network) .layer.network { pointer-events: none; }
+
+.sheet { position: absolute; left: 0; top: 0; overflow: visible; }
+
+/* ---------- hardware ---------- */
+.node { position: absolute; transform-style: preserve-3d; }
+
+.face { position: absolute; border: 1px solid var(--edge); }
 .face.top   { background: var(--face-top); }
 .face.east  { background: var(--face-east);  transform-origin: 0 0; transform: rotateY(-90deg); }
 .face.south { background: var(--face-south); transform-origin: 0 0; transform: rotateX(90deg); }
 
-/* The label undoes the camera rotation (reverse order, negative angles), so it always faces the viewer. */
+/* ---------- network ---------- */
+/* Thread from an address on the glass down to the box it lives on (goes down via rotateX(-90deg)). */
+.thread {
+  position: absolute;
+  width: 0;
+  border-left: 1px dashed var(--thread-color, var(--text-muted));
+  transform-origin: 0 0;
+  transform: rotateX(-90deg);
+}
+
+.pin {
+  position: absolute;
+  width: 10px; height: 10px;
+  margin: -5px 0 0 -5px;
+  border-radius: 50%;
+  background: var(--pin-color);
+  transform: translateZ(1px);
+}
+
+/* ---------- labels ----------
+   A label undoes the camera rotation (reverse order, negative angles), so it always faces you. */
 .label {
   position: absolute;
   transform-origin: 0 0;
   transform:
-    translateZ(var(--label-z))
+    translateZ(var(--label-z, 0px))
     rotateZ(calc(-1 * var(--spin)))
     rotateX(calc(-1 * var(--tilt)))
-    translate(-50%, calc(-100% - 6px));
+    translate(-50%, calc(-100% - 6px - var(--lift, 0px)));
   white-space: nowrap;
   font-size: 12px;
   line-height: 1.3;
@@ -146,8 +202,12 @@ body { display: flex; flex-direction: column; }
   pointer-events: none;
 }
 
-.label small {
-  display: block;
-  font-size: 11px;
-  color: var(--text-muted);
+.label small { display: block; font-size: 11px; color: var(--text-muted); }
+
+.label.addr {
+  border-color: var(--pin-color);
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 11.5px;
 }
+
+.label.net { border-width: 2px; border-color: var(--pin-color); font-weight: 500; }
