@@ -91,7 +91,8 @@
     return [options[0].corner, b];
   }
 
-  function route(from, to, via) {
+  // Fallback when the autorouter finds no way: a plain L between the stubs.
+  function simpleRoute(from, to, via) {
     const a0 = from.point, b0 = to.point;
     const a1 = [a0[0] + from.out[0] * STUB, a0[1] + from.out[1] * STUB];
     const b1 = [b0[0] + to.out[0] * STUB, b0[1] + to.out[1] * STUB];
@@ -120,6 +121,151 @@
       const [q, r] = [a[i - 1], a[i + 1]];
       return !((q[0] === p[0] && p[0] === r[0]) || (q[1] === p[1] && p[1] === r[1]));
     });
+  }
+
+  // ---------------------------------------------------------------- autorouter
+  //
+  // Cables are routed like tracks on a circuit board (Lee / A* maze routing), on a sparse
+  // orthogonal grid: its lines run only where something happens — floor grid lines, the edges of
+  // every box plus a margin, every port and stub end, every via. Boxes are obstacles. The cost of
+  // a route is its length, plus a penalty for each bend (that is what keeps routes to 1–3 tidy
+  // corners), plus a penalty for running on a piece another cable already uses (so parallel
+  // cables keep apart where there is room). A cable leaves its port straight out (the stub) and
+  // enters the far port the same way. Same input → same routes.
+
+  const MARGIN = 10;        // keep-out around each box
+  const BEND = 30;          // one corner costs as much as 30px of extra length
+  const SHARED = 0.6;       // extra cost per px on a piece already used by another cable
+  const DIRS = [[1, 0], [0, 1], [-1, 0], [0, -1]];
+  const dirIndex = d => DIRS.findIndex(e => e[0] === d[0] && e[1] === d[1]);
+
+  class Heap {
+    constructor() { this.a = []; }
+    get size() { return this.a.length; }
+    push(item) {
+      const a = this.a; a.push(item);
+      let i = a.length - 1;
+      while (i > 0) { const p = (i - 1) >> 1; if (a[p][0] <= a[i][0]) break; [a[p], a[i]] = [a[i], a[p]]; i = p; }
+    }
+    pop() {
+      const a = this.a, top = a[0], last = a.pop();
+      if (a.length) {
+        a[0] = last;
+        let i = 0;
+        for (;;) {
+          const l = 2 * i + 1, r = l + 1;
+          let m = i;
+          if (l < a.length && a[l][0] < a[m][0]) m = l;
+          if (r < a.length && a[r][0] < a[m][0]) m = r;
+          if (m === i) break;
+          [a[m], a[i]] = [a[i], a[m]]; i = m;
+        }
+      }
+      return top;
+    }
+  }
+
+  function makeRouter(floor, nodes, ports, links) {
+    const round = v => Math.round(v * 100) / 100;
+    const obstacles = [...nodes.values()].map(n => {
+      const L = n.layout;
+      return [L.x - MARGIN, L.y - MARGIN, L.x + L.w + MARGIN, L.y + L.d + MARGIN];
+    });
+
+    const xs = new Set([0, floor.width]), ys = new Set([0, floor.height]);
+    const g = floor.grid || 20;
+    const step = Math.max(g, Math.ceil(Math.max(floor.width, floor.height) / 120 / g) * g);
+    for (let x = 0; x <= floor.width; x += step) xs.add(x);
+    for (let y = 0; y <= floor.height; y += step) ys.add(y);
+    for (const [x0, y0, x1, y1] of obstacles) { xs.add(round(x0)); xs.add(round(x1)); ys.add(round(y0)); ys.add(round(y1)); }
+    const stubEnd = p => [round(p.point[0] + p.out[0] * STUB), round(p.point[1] + p.out[1] * STUB)];
+    for (const p of ports.values()) { const [x, y] = stubEnd(p); xs.add(x); ys.add(y); }
+    for (const l of links) for (const [x, y] of l.via || []) { xs.add(round(x)); ys.add(round(y)); }
+
+    const X = [...xs].sort((a, b) => a - b), Y = [...ys].sort((a, b) => a - b);
+    const ix = new Map(X.map((v, i) => [v, i])), iy = new Map(Y.map((v, i) => [v, i]));
+    const NY = Y.length;
+    const used = new Map();   // "i,j,dir" segment key → how many cables run on it
+
+    const inside = (x, y) => obstacles.some(([x0, y0, x1, y1]) => x > x0 + 0.01 && x < x1 - 0.01 && y > y0 + 0.01 && y < y1 - 0.01);
+    const blockedCache = new Map();
+    function blocked(i, j, d) {             // segment from lattice point (i, j) one step in direction d
+      const key = (i * NY + j) * 4 + d;
+      if (!blockedCache.has(key)) {
+        const ni = i + DIRS[d][0], nj = j + DIRS[d][1];
+        blockedCache.set(key, inside((X[i] + X[ni]) / 2, (Y[j] + Y[nj]) / 2));
+      }
+      return blockedCache.get(key);
+    }
+    const segKey = (i, j, d) => {           // undirected: normalise to E or S
+      if (d === 2) return `${i - 1},${j},0`;
+      if (d === 3) return `${i},${j - 1},1`;
+      return `${i},${j},${d}`;
+    };
+
+    // One leg: from lattice point a (heading dirIn) to lattice point b; if dirOut is given, the
+    // leg must end heading that way (into the port), otherwise any direction.
+    function leg(a, b, dirIn, dirOut, endpoints) {
+      const [ai, aj] = [ix.get(a[0]), iy.get(a[1])], [bi, bj] = [ix.get(b[0]), iy.get(b[1])];
+      const h = (i, j) => Math.abs(X[i] - X[bi]) + Math.abs(Y[j] - Y[bj]);
+      const best = new Map(), from = new Map();
+      const heap = new Heap();
+      let n = 0;
+      const start = (ai * NY + aj) * 4 + dirIn;
+      best.set(start, 0);
+      heap.push([h(ai, aj), n++, start, 0]);
+      let goal = null;
+      while (heap.size) {
+        const [, , state, cost] = heap.pop();
+        if (cost > best.get(state)) continue;
+        const d = state % 4, cell = (state - d) / 4, i = Math.floor(cell / NY), j = cell % NY;
+        if (i === bi && j === bj && (dirOut === null || d === dirOut)) { goal = state; break; }
+        for (let nd = 0; nd < 4; nd++) {
+          if (nd === (d + 2) % 4) continue;                       // never double back
+          const ni = i + DIRS[nd][0], nj = j + DIRS[nd][1];
+          if (ni < 0 || nj < 0 || ni >= X.length || nj >= NY) continue;
+          const nearEnd = endpoints.has(cell) || endpoints.has(ni * NY + nj);
+          if (!nearEnd && blocked(i, j, nd)) continue;
+          const len = Math.abs(X[ni] - X[i]) + Math.abs(Y[nj] - Y[j]);
+          const c = cost + len + (nd !== d ? BEND : 0) + len * SHARED * (used.get(segKey(i, j, nd)) || 0);
+          const ns = (ni * NY + nj) * 4 + nd;
+          if (c < (best.has(ns) ? best.get(ns) : Infinity)) {
+            best.set(ns, c);
+            from.set(ns, state);
+            heap.push([c + h(ni, nj), n++, ns, c]);
+          }
+        }
+      }
+      if (goal === null) return null;
+      const cells = [];
+      for (let s = goal; s !== undefined; s = from.get(s)) cells.push(s);
+      cells.reverse();
+      return { cells, dir: goal % 4 };
+    }
+
+    return function route(link) {
+      const { a, b } = link;
+      const s0 = stubEnd(a), s1 = stubEnd(b);
+      const stops = [s0, ...(link.via || []).map(([x, y]) => [round(x), round(y)]), s1];
+      const endpoints = new Set([s0, s1].map(([x, y]) => ix.get(x) * NY + iy.get(y)));
+      let dir = dirIndex(a.out);
+      const cells = [];
+      for (let k = 1; k < stops.length; k++) {
+        const last = k === stops.length - 1;
+        const r = leg(stops[k - 1], stops[k], dir, last ? dirIndex([-b.out[0], -b.out[1]]) : null, endpoints);
+        if (!r) return null;
+        cells.push(...(cells.length ? r.cells.slice(1) : r.cells));
+        dir = r.dir;
+      }
+      // Remember the pieces this cable uses, so the next cables prefer other lines.
+      for (let k = 1; k < cells.length; k++) {
+        const d = cells[k] % 4, prev = (cells[k - 1] - (cells[k - 1] % 4)) / 4;
+        const key = segKey(Math.floor(prev / NY), prev % NY, d);
+        used.set(key, (used.get(key) || 0) + 1);
+      }
+      const pts = cells.map(s => { const c = (s - (s % 4)) / 4; return [X[Math.floor(c / NY)], Y[c % NY]]; });
+      return simplify([a.point, ...pts, b.point]);
+    };
   }
 
   // Middle of the longest straight piece: where a label on the line has the most room.
@@ -231,10 +377,20 @@
         warn(`${where}: ports differ (${formatSpeed(a.speed)} / ${formatSpeed(b.speed)}), runs at ${formatSpeed(Math.min(a.speed, b.speed))}`);
       }
 
-      const link = { ...l, a, b, kind, radio, speed, points: route(a, b, l.via) };
+      const link = { ...l, a, b, kind, radio, speed, points: null };
       a.links.push(link);
       b.links.push(link);
       links.push(link);
+    }
+
+    // Routes: wired cables first (they matter most for a clean picture), radio links after.
+    const route = makeRouter(raw.floor || { width: 800, height: 600, grid: 20 }, nodes, ports, links);
+    for (const link of [...links.filter(l => !l.radio), ...links.filter(l => l.radio)]) {
+      link.points = route(link);
+      if (!link.points) {
+        warn(`link ${link.from} → ${link.to}: no route around the boxes, drawn straight`);
+        link.points = simpleRoute(link.a, link.b, link.via);
+      }
     }
 
     // A wired port takes one cable; a radio port takes many.

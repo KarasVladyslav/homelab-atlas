@@ -1,5 +1,6 @@
-// Renders the inventory model (model.js) into a CSS 3D scene with two floors:
-//   hardware (z = 0)    — zones, boxes, ports at the foot of each box, cables on the floor
+// Renders the inventory model (model.js) into a CSS 3D scene with three floors:
+//   plan     (z = 0)    — the drawing on the floor: grid and zones (rooms, cabinets)
+//   hardware (z = 0)    — boxes, ports at the foot of each box, cables on the floor
 //   network  (z = netZ) — floating above it: one rectangle per networked node with its ports,
 //                         and the links that carry each network, in that network's colour.
 // Data lives in world coordinates; this file only projects it via CSS transforms.
@@ -68,7 +69,9 @@
 
   // ---------------------------------------------------------------- hardware floor
 
-  function renderHardware(layer) {
+  // ---------------------------------------------------------------- plan floor
+
+  function renderPlan(layer) {
     const { floor } = model;
     const svg = sheet(floor);
     const g = floor.grid || 20;
@@ -79,13 +82,24 @@
 
     for (const z of model.zones) {
       svg.appendChild(svgEl('rect', {
+        class: 'zone' + (Atlas.selectedZone === z.id ? ' selected' : ''), 'data-zone': z.id,
         x: z.x, y: z.y, width: z.w, height: z.d, rx: 10,
-        fill: 'none', stroke: 'var(--zone)', 'stroke-width': 2, 'stroke-dasharray': '10 8',
+        fill: 'transparent', stroke: 'var(--zone)', 'stroke-width': 2, 'stroke-dasharray': '10 8',
       }));
       const t = svgEl('text', { x: z.x + 12, y: z.y + z.d - 14, fill: 'var(--text-muted)', 'font-size': 14 });
       t.textContent = z.name;
       svg.appendChild(t);
     }
+    layer.appendChild(svg);
+    if (Atlas.decoratePlan) Atlas.decoratePlan(layer, model);
+  }
+
+  // ---------------------------------------------------------------- hardware floor
+
+  function renderHardware(layer) {
+    const { floor } = model;
+    const svg = sheet(floor);
+    svg.style.transform = 'translateZ(1px)';    // just above the plan, or the two sheets z-fight
 
     for (const link of model.links) {
       svg.appendChild(svgEl('path', {
@@ -235,11 +249,13 @@
     scene.style.height = px(floor.height);
     scene.style.setProperty('--net-z', px(netZ));
 
+    const plan = el('div', 'layer plan');
     const hw = el('div', 'layer hardware');
     const net = el('div', 'layer network');
+    renderPlan(plan);
     renderHardware(hw);
     renderNetwork(net, netZ);
-    scene.append(hw, net);
+    scene.append(plan, hw, net);
     renderProblems();
     if (!fitted) { fit(netZ); fitted = true; }
   }
@@ -279,9 +295,12 @@
   for (const b of document.querySelectorAll('[data-view]')) {
     b.addEventListener('click', () => { stage.classList.toggle('side', b.dataset.view === 'side'); press('view', b.dataset.view); });
   }
-  for (const b of document.querySelectorAll('[data-floor]')) {
-    b.addEventListener('click', () => { stage.classList.toggle('on-network', b.dataset.floor === 'network'); press('floor', b.dataset.floor); });
+  function setFloor(floor) {
+    stage.dataset.floor = floor;
+    press('floor', floor);
+    document.dispatchEvent(new CustomEvent('atlas:floor', { detail: floor }));
   }
+  for (const b of document.querySelectorAll('[data-floor]')) b.addEventListener('click', () => setFloor(b.dataset.floor));
   window.addEventListener('resize', () => model && fit(netHeight()));
 
   // ---------------------------------------------------------------- API for the editor
@@ -293,7 +312,11 @@
     render: () => model && render(),
     stage, scene, view,
     selected: null,
+    selectedZone: null,
     decorate: null,
+    decoratePlan: null,
+    get floor() { return stage.dataset.floor; },
+    setFloor: f => setFloor(f),
     // Floor point (hardware floor, z = 0) under a screen point. The camera maps a floor point p to
     // screen = stageCentre + zoom · Rx(tilt) · Rz(spin) · (p − floorCentre + pan), so invert that.
     floorAt(clientX, clientY) {

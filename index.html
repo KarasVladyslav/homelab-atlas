@@ -18,6 +18,7 @@
         </button>
       </div>
       <div class="toggle" role="group" aria-label="Floor">
+        <button type="button" data-floor="plan" aria-pressed="false">Plan</button>
         <button type="button" data-floor="hardware" aria-pressed="true">Hardware</button>
         <button type="button" data-floor="network" aria-pressed="false">Network</button>
       </div>
@@ -28,7 +29,7 @@
     </div>
   </header>
 
-  <main class="stage side" id="stage">
+  <main class="stage side" id="stage" data-floor="hardware">
     <div class="scene" id="scene"></div>
     <div class="legend" id="legend" aria-label="Networks"></div>
     <div class="problems" id="problems" hidden aria-live="polite"></div>

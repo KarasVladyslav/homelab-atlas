@@ -9,8 +9,8 @@
 #     `layout` is x, y (top-left corner), w (along x), d (along y), h (height).
 #   - Ports sit on the east side (right in top view, lower-right face in the Side view)
 #     unless `side:` says otherwise. Their positions are computed.
-#   - A cable leaves a port straight out, then runs only horizontally/vertically;
-#     `via:` adds waypoints. Corners are drawn rounded.
+#   - Cables are routed automatically around the boxes (horizontal/vertical only, few
+#     corners, drawn rounded); `via:` adds optional waypoints the route passes through.
 #   - A wired port takes one cable; a `kind: radio` port takes many (Wi-Fi, BLE).
 #   - Link speed = the slower of its two ports, unless the link sets `speed:`.
 #   - The network floor is derived: a port carries the networks of its interfaces plus

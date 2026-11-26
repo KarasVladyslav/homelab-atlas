@@ -30,7 +30,12 @@ docker run --rm -p 8080:8080 ghcr.io/karasvladyslav/homelab-atlas:latest
 
 ## Editing
 
-Press **✎ Edit** to change the hardware floor with the mouse:
+Press **✎ Edit** to change the plan and hardware floors with the mouse.
+
+On the **Plan** floor (the drawing on the floor: zones such as rooms and cabinets):
+drag a zone to move it, drag its ↔ / ↕ strips to resize it.
+
+On the **Hardware** floor:
 
 - drag a box to move it (snaps to the grid);
 - ↻ / ↺ on the floor at its front corners rotate it 90° — ports turn with it;
@@ -79,13 +84,19 @@ network, or two cables on one port; it warns about speed mismatches.
 
 - **Hardware** — the floor: zones, boxes, and the cables (copper, fiber, Wi-Fi,
   BLE) lying on it.
+- **Plan** — the drawing on the floor underneath everything: the grid and zones
+  (rooms, cabinets, shelves).
 - **Network** — floating above it: every networked node as its outline seen from
   above, with its ports (speed on each) and addresses, and the links that carry
   each network in that network's colour. Dashed threads drop from each outline to
   its box, so the two floors never drift apart.
 
-Lines follow the same rules on both floors: only horizontal and vertical pieces
-seen from above, rounded corners, ending on a port. Line width shows the
+Cables are routed automatically, like tracks on a circuit board (A* maze routing on
+a sparse orthogonal grid): around the boxes, only horizontal and vertical pieces seen
+from above, as few corners as possible (each corner costs extra), apart from other
+cables where there is room, leaving and entering ports straight. Corners are drawn
+rounded. `via:` on a link is an optional hint the route passes through; moving a box
+in the editor drops the hints of its cables. Line width shows the
 negotiated speed (the slower of the two ports): 100M thin, 1G, 2.5G, 10G thick;
 Wi-Fi and BLE are dashed.
 
