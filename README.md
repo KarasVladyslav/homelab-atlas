@@ -24,4 +24,4 @@ picture follows.
 
 ## License
 
-TBD.
+[MIT](LICENSE)
