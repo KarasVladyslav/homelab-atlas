@@ -246,14 +246,24 @@
     fit(netZ);
   }
 
+  // What the user did to the camera: pan (world coordinates, along the floor) and zoom (a factor
+  // on top of the zoom that fits the floor on screen).
+  const view = { fitZoom: 1, zoom: 1, panX: 0, panY: 0 };
+
+  function applyView() {
+    scene.style.setProperty('--zoom', (view.fitZoom * view.zoom).toFixed(4));
+    scene.style.setProperty('--pan-x', px(view.panX));
+    scene.style.setProperty('--pan-y', px(view.panY));
+  }
+
   // One zoom that fits both views, so switching the camera never needs a re-fit.
   function fit(netZ) {
     const { width: W, height: D } = inv.floor;
     const r = stage.getBoundingClientRect();
     const sideW = (W + D) * Math.SQRT1_2;
     const sideH = sideW * Math.cos(58 * Math.PI / 180) + netZ * Math.sin(58 * Math.PI / 180);
-    const zoom = Math.min(r.width / (sideW + 60), r.height / (sideH + 160), r.width / (W + 60), r.height / (D + 60), 1.6);
-    scene.style.setProperty('--zoom', zoom.toFixed(3));
+    view.fitZoom = Math.min(r.width / (sideW + 60), r.height / (sideH + 160), r.width / (W + 60), r.height / (D + 60), 1.6);
+    applyView();
   }
 
   function press(attr, value) {
@@ -270,43 +280,40 @@
   }
   window.addEventListener('resize', () => fit(netHeight()));
 
-  // ---------------------------------------------------------------- pan (hold the right button)
+  // ---------------------------------------------------------------- pan and zoom
   //
-  // The pan lives in world coordinates (along the floor), not on the screen. A mouse delta is
-  // turned into a floor delta by undoing the camera: screen = zoom · Rx(tilt) · Rz(spin) · floor,
-  // and for a point on the floor Rx only squashes y by cos(tilt).
-  const pan = { x: 0, y: 0 };
-  let drag = null;
-
-  function cameraAngles() {
+  // The camera maps the active floor to the screen as  screen = zoom · Rx(tilt) · Rz(spin) · floor
+  // (around the stage centre). For a point on the floor Rx only squashes y by cos(tilt), so a screen
+  // vector turns back into a floor vector by: ÷zoom, y ÷cos(tilt), rotate by −spin.
+  function cameraNow() {
     const cs = getComputedStyle(scene);
-    const deg = v => parseFloat(v) * Math.PI / 180;
-    return { tilt: deg(cs.getPropertyValue('--tilt')), spin: deg(cs.getPropertyValue('--spin')),
-             zoom: parseFloat(cs.getPropertyValue('--zoom')) || 1 };
+    const rad = v => parseFloat(v) * Math.PI / 180;
+    return { tilt: rad(cs.getPropertyValue('--tilt')), spin: rad(cs.getPropertyValue('--spin')) };
   }
 
-  function applyPan() {
-    scene.style.setProperty('--pan-x', px(pan.x));
-    scene.style.setProperty('--pan-y', px(pan.y));
+  function screenToFloor(dx, dy, zoom, cam) {
+    const a = dx / zoom;
+    const b = dy / (zoom * Math.max(Math.cos(cam.tilt), 0.2));
+    return [a * Math.cos(cam.spin) + b * Math.sin(cam.spin), -a * Math.sin(cam.spin) + b * Math.cos(cam.spin)];
   }
 
+  // Pan: hold the right button and drag. The scene follows the cursor 1:1.
+  let drag = null;
   stage.addEventListener('contextmenu', e => e.preventDefault());
   stage.addEventListener('pointerdown', e => {
     if (e.button !== 2) return;
-    drag = { x: e.clientX, y: e.clientY, cam: cameraAngles() };
+    drag = { x: e.clientX, y: e.clientY, cam: cameraNow() };
     stage.setPointerCapture(e.pointerId);
     stage.classList.add('panning');
   });
   stage.addEventListener('pointermove', e => {
     if (!drag) return;
-    const { tilt, spin, zoom } = drag.cam;
-    const a = (e.clientX - drag.x) / zoom;
-    const b = (e.clientY - drag.y) / (zoom * Math.max(Math.cos(tilt), 0.2));
-    pan.x += a * Math.cos(spin) + b * Math.sin(spin);
-    pan.y += -a * Math.sin(spin) + b * Math.cos(spin);
+    const [fx, fy] = screenToFloor(e.clientX - drag.x, e.clientY - drag.y, view.fitZoom * view.zoom, drag.cam);
+    view.panX += fx;
+    view.panY += fy;
     drag.x = e.clientX;
     drag.y = e.clientY;
-    applyPan();
+    applyView();
   });
   const endDrag = e => {
     if (!drag) return;
@@ -316,6 +323,22 @@
   };
   stage.addEventListener('pointerup', endDrag);
   stage.addEventListener('pointercancel', endDrag);
+
+  // Zoom: mouse wheel, towards the point under the cursor. That point must stay under the cursor,
+  // so the pan moves by  floor(cursor offset) · (1/newZoom − 1/oldZoom).
+  const ZOOM_MIN = 0.3, ZOOM_MAX = 6;
+  stage.addEventListener('wheel', e => {
+    e.preventDefault();
+    const r = stage.getBoundingClientRect();
+    const cam = cameraNow();
+    const oldZoom = view.fitZoom * view.zoom;
+    view.zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, view.zoom * Math.exp(-e.deltaY * 0.0015)));
+    const newZoom = view.fitZoom * view.zoom;
+    const [fx, fy] = screenToFloor(e.clientX - (r.left + r.width / 2), e.clientY - (r.top + r.height / 2), 1, cam);
+    view.panX += fx * (1 / newZoom - 1 / oldZoom);
+    view.panY += fy * (1 / newZoom - 1 / oldZoom);
+    applyView();
+  }, { passive: false });
 
   render();
 })();

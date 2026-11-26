@@ -13,7 +13,8 @@ picture follows.
 
 Open `index.html` in a browser — no build step, no server, works from disk.
 The toggles in the top-right corner switch the floor (Hardware / Network) and
-the camera (Top / Side). Hold the right mouse button and drag to move around.
+the camera (Top / Side). Hold the right mouse button and drag to move around; the mouse wheel zooms
+towards the cursor.
 
 Or run the image:
 
