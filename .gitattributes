@@ -1,0 +1,6 @@
+# Store text with LF in the repo regardless of the editor's OS.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary
