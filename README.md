@@ -11,10 +11,16 @@ picture follows.
 
 ## Try it
 
-Open `index.html` in a browser — no build step, no server, works from disk.
+The page has no build step, but it fetches `config/inventory.yaml`, so serve the
+folder over http (any static server):
+
+```sh
+python3 -m http.server 8000     # then open http://localhost:8000/
+```
+
 The toggles in the top-right corner switch the floor (Hardware / Network) and
-the camera (Top / Side). Hold the right mouse button and drag to move around; the mouse wheel zooms
-towards the cursor.
+the camera (Top / Side). Hold the right mouse button and drag to move around;
+the mouse wheel zooms towards the cursor.
 
 Or run the image:
 
@@ -22,27 +28,53 @@ Or run the image:
 docker run --rm -p 8080:8080 ghcr.io/karasvladyslav/homelab-atlas:latest
 ```
 
-To show your own lab, mount your inventory over the example one:
+## Your own lab
+
+Describe it in a YAML file and mount it over the example:
 
 ```sh
 docker run --rm -p 8080:8080 \
-  -v "$PWD/my-inventory.js:/usr/share/nginx/html/config/inventory.js:ro" \
+  -v "$PWD/my-lab.yaml:/usr/share/nginx/html/config/inventory.yaml:ro" \
   ghcr.io/karasvladyslav/homelab-atlas:latest
 ```
 
-The format is documented at the top of [`config/inventory.js`](config/inventory.js).
+The format is documented at the top of [`config/inventory.yaml`](config/inventory.yaml)
+and in [`schema/inventory.schema.json`](schema/inventory.schema.json) (point your
+editor's YAML plugin at it for autocompletion). In short:
+
+- **nodes** — boxes with a `layout` (position and size), **ports** (speed, side,
+  kind: copper / fiber / radio) and **interfaces** (addresses, which sit on ports
+  and put them into a network);
+- **links** — cables and radio links between ports, `node:port` to `node:port`;
+- **networks** — the network floor is derived from them: a link shows up in every
+  network both of its ports carry.
+
+Everything is referenced by `id`; `name` is display text you can change freely.
+Check a file before deploying it — the same checks the page runs:
+
+```sh
+npm ci
+node tools/validate.mjs my-lab.yaml
+```
+
+It fails on broken references, duplicate ids or IPs, an address outside its
+network, or two cables on one port; it warns about speed mismatches.
 
 ## Two floors
 
 - **Hardware** — the floor: zones, boxes, and the cables (copper, fiber, Wi-Fi,
   BLE) lying on it.
-- **Network** — a glass plate above it: network outlines, logical links and
-  addresses. Every network member points at a hardware node, so the network
-  floor follows the hardware layout and never drifts away from it; dashed
-  threads drop from each address to the box it lives on.
+- **Network** — floating above it: every networked node as its outline seen from
+  above, with its ports (speed on each) and addresses, and the links that carry
+  each network in that network's colour. Dashed threads drop from each outline to
+  its box, so the two floors never drift apart.
 
-The floor you are not working on fades: the network turns into faint glass
-over the hardware, or the hardware dims under the network.
+Lines follow the same rules on both floors: only horizontal and vertical pieces
+seen from above, rounded corners, ending on a port. Line width shows the
+negotiated speed (the slower of the two ports): 100M thin, 1G, 2.5G, 10G thick;
+Wi-Fi and BLE are dashed.
+
+The floor you are not working on fades.
 
 ## How it renders
 

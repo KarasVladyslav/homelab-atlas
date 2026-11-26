@@ -1,0 +1,13 @@
+{
+  "name": "homelab-atlas",
+  "private": true,
+  "license": "MIT",
+  "description": "Validation tooling for homelab-atlas inventories (the app itself has no build step).",
+  "scripts": {
+    "validate": "node tools/validate.mjs config/inventory.yaml"
+  },
+  "devDependencies": {
+    "ajv": "^8.17.1",
+    "js-yaml": "^4.1.0"
+  }
+}

@@ -219,6 +219,47 @@ rect.netnode { fill-opacity: 1; transition: fill-opacity var(--camera-duration) 
   white-space: pre;
 }
 
+/* ---------- ports and speeds ---------- */
+.hw-port { fill: var(--face-top); stroke: var(--edge); stroke-width: 1.5; }
+
+.label.speed {
+  padding: 1px 6px;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 10.5px;
+  border-radius: 999px;
+  color: var(--text-muted);
+}
+.label.port-speed { transform:
+    translateZ(var(--label-z, 0px)) rotateZ(calc(-1 * var(--spin))) rotateX(calc(-1 * var(--tilt)))
+    translate(-50%, -50%); }
+.label.link-speed { transform:
+    translateZ(var(--label-z, 0px)) rotateZ(calc(-1 * var(--spin))) rotateX(calc(-1 * var(--tilt)))
+    translate(-50%, -50%); }
+
+/* ---------- problems in the inventory ---------- */
+.problems {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  max-width: min(520px, 60%);
+  max-height: 40%;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+.problems[hidden] { display: none; }
+.problem {
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--label-bg);
+  border: 1px solid var(--label-border);
+  border-left: 4px solid var(--problem-color);
+}
+.problem.error   { --problem-color: #e24b4a; }
+.problem.warning { --problem-color: #ef9f27; }
+
 /* ---------- legend (screen overlay, shown on the network floor) ---------- */
 .legend {
   position: absolute;

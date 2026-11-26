@@ -24,10 +24,13 @@
   <main class="stage side" id="stage">
     <div class="scene" id="scene"></div>
     <div class="legend" id="legend" aria-label="Networks"></div>
+    <div class="problems" id="problems" hidden aria-live="polite"></div>
   </main>
 
-  <!-- Classic scripts (not ES modules) so the page also opens straight from disk via file:// -->
-  <script src="config/inventory.js"></script>
+  <!-- No build step: plain scripts. The inventory (config/inventory.yaml) is fetched, so the page
+       needs to be served over http (any static server will do). -->
+  <script src="src/vendor/js-yaml.min.js"></script>
+  <script src="src/model.js"></script>
   <script src="src/scene.js"></script>
 </body>
 </html>

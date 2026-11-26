@@ -19,10 +19,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
       - name: Syntax check
         run: |
+          node --check src/model.js
           node --check src/scene.js
-          node --check config/inventory.js
+
+      # Same check deployments run on their own inventories (schema + references + IPs).
+      - name: Validate example inventory
+        run: |
+          npm ci
+          node tools/validate.mjs config/inventory.yaml
 
       - uses: docker/build-push-action@v6
         with:
@@ -36,7 +47,7 @@ jobs:
         run: |
           docker run -d --name atlas -p 8080:8080 homelab-atlas:test
           for i in $(seq 1 20); do curl -fs http://localhost:8080/healthz && break; sleep 0.5; done
-          curl -fsI http://localhost:8080/config/inventory.js | grep -i 'cache-control: no-cache'
+          curl -fsI http://localhost:8080/config/inventory.yaml | grep -i 'cache-control: no-cache'
           dom=$(google-chrome --headless=new --no-sandbox --virtual-time-budget=3000 --dump-dom http://localhost:8080/)
           nodes=$(grep -o 'class="node"' <<<"$dom" | wc -l)
           netnodes=$(grep -o 'class="netnode"' <<<"$dom" | wc -l)

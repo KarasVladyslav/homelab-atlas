@@ -1,0 +1,134 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/KarasVladyslav/homelab-atlas/schema/inventory.schema.json",
+  "title": "homelab-atlas inventory",
+  "description": "Shape of config/inventory.yaml. Cross-references (ports, networks, IPs) are checked by src/model.js.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["floor", "nodes"],
+  "properties": {
+    "title": { "type": "string" },
+    "floor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["width", "height"],
+      "properties": {
+        "width": { "type": "number", "exclusiveMinimum": 0 },
+        "height": { "type": "number", "exclusiveMinimum": 0 },
+        "grid": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "zones": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "name", "x", "y", "w", "d"],
+        "properties": {
+          "id": { "$ref": "#/definitions/id" },
+          "name": { "type": "string" },
+          "x": { "type": "number" }, "y": { "type": "number" },
+          "w": { "type": "number", "exclusiveMinimum": 0 }, "d": { "type": "number", "exclusiveMinimum": 0 }
+        }
+      }
+    },
+    "networks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "name"],
+        "properties": {
+          "id": { "$ref": "#/definitions/id" },
+          "name": { "type": "string" },
+          "cidr": { "type": "string", "description": "IPv4 CIDR (addresses are checked against it) or free text such as ISP" },
+          "color": { "type": "string" }
+        }
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "name", "layout"],
+        "properties": {
+          "id": { "$ref": "#/definitions/id" },
+          "name": { "type": "string" },
+          "subtitle": { "type": "string" },
+          "kind": { "type": "string", "description": "router, switch, server, ap, … (free text for now)" },
+          "layout": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["x", "y", "w", "d", "h"],
+            "properties": {
+              "x": { "type": "number" }, "y": { "type": "number" },
+              "w": { "type": "number", "exclusiveMinimum": 0 },
+              "d": { "type": "number", "exclusiveMinimum": 0 },
+              "h": { "type": "number", "minimum": 0 }
+            }
+          },
+          "ports": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id"],
+              "properties": {
+                "id": { "$ref": "#/definitions/id" },
+                "name": { "type": "string" },
+                "kind": { "enum": ["copper", "fiber", "radio"], "default": "copper" },
+                "speed": { "$ref": "#/definitions/speed" },
+                "side": { "enum": ["east", "west", "north", "south"], "default": "east" },
+                "networks": { "type": "array", "items": { "$ref": "#/definitions/id" } }
+              }
+            }
+          },
+          "interfaces": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "on", "network"],
+              "properties": {
+                "id": { "$ref": "#/definitions/id" },
+                "on": {
+                  "oneOf": [
+                    { "$ref": "#/definitions/id" },
+                    { "type": "array", "minItems": 1, "items": { "$ref": "#/definitions/id" } }
+                  ]
+                },
+                "network": { "$ref": "#/definitions/id" },
+                "ip": { "type": "string", "description": "IPv4 address, dhcp or unknown" },
+                "label": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "links": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["from", "to"],
+        "properties": {
+          "from": { "$ref": "#/definitions/portRef" },
+          "to": { "$ref": "#/definitions/portRef" },
+          "kind": { "enum": ["copper", "fiber", "wifi", "ble"] },
+          "speed": { "$ref": "#/definitions/speed" },
+          "via": {
+            "type": "array",
+            "items": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "number" } }
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+    "portRef": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*:[a-z0-9][a-z0-9-]*$" },
+    "speed": { "type": "string", "pattern": "^\\d+(\\.\\d+)?[MG]$" }
+  }
+}

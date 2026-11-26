@@ -1,0 +1,103 @@
+# homelab-atlas inventory — a fictional example lab.
+# Real inventories stay out of this repo: in a deployment, mount your own file over
+# config/inventory.yaml (e.g. from a ConfigMap). Schema: schema/inventory.schema.json
+#
+# Rules of the format
+#   - Everything is referenced by `id`; `name` is free display text — rename it any time.
+#   - Ports are addressed as "node:port".
+#   - Coordinates are px on the floor, seen from above: x → right, y → down;
+#     `layout` is x, y (top-left corner), w (along x), d (along y), h (height).
+#   - Ports sit on the east side (right in top view, lower-right face in the Side view)
+#     unless `side:` says otherwise. Their positions are computed.
+#   - A cable leaves a port straight out, then runs only horizontally/vertically;
+#     `via:` adds waypoints. Corners are drawn rounded.
+#   - A wired port takes one cable; a `kind: radio` port takes many (Wi-Fi, BLE).
+#   - Link speed = the slower of its two ports, unless the link sets `speed:`.
+#   - The network floor is derived: a port carries the networks of its interfaces plus
+#     its own `networks:`; a link shows up in every network both of its ports carry.
+
+title: Example lab
+floor: { width: 900, height: 560, grid: 20 }
+
+zones:
+  - { id: closet, name: Network closet, x: 20,  y: 20, w: 380, d: 520 }
+  - { id: office, name: Office,         x: 460, y: 20, w: 420, d: 520 }
+
+networks:
+  - { id: wan, name: WAN, cidr: ISP,         color: "#ef9f27" }
+  - { id: lan, name: LAN, cidr: 10.0.0.0/24, color: "#378add" }
+
+nodes:
+  - id: isp
+    name: Internet
+    subtitle: ISP fiber
+    layout: { x: 50, y: 50, w: 80, d: 50, h: 6 }
+    ports:
+      - { id: fiber, kind: fiber, networks: [wan] }
+
+  - id: router
+    name: Router
+    subtitle: gateway
+    layout: { x: 50, y: 160, w: 120, d: 80, h: 24 }
+    ports:
+      - { id: wan,  speed: 1G }
+      - { id: lan1, speed: 1G }
+      - { id: lan2, speed: 2.5G }
+    interfaces:
+      - { id: wan, on: wan, network: wan, ip: dhcp }
+      - { id: lan, on: [lan1, lan2], network: lan, ip: 10.0.0.1 }
+
+  - id: server
+    name: Server
+    subtitle: hypervisor
+    layout: { x: 50, y: 330, w: 160, d: 150, h: 120 }
+    ports:
+      - { id: nic0, speed: 2.5G }
+    interfaces:
+      - { id: host, on: nic0, network: lan, ip: 10.0.0.10, label: host }
+      - { id: vm1,  on: nic0, network: lan, ip: 10.0.0.20, label: vm }
+
+  - id: switch
+    name: Switch
+    subtitle: 8 × 1 GbE
+    layout: { x: 500, y: 150, w: 150, d: 60, h: 16 }
+    ports:
+      - { id: uplink, speed: 1G, side: west, networks: [lan] }
+      - { id: p2,     speed: 1G, networks: [lan] }
+      - { id: p3,     speed: 1G, networks: [lan] }
+
+  - id: nas
+    name: NAS
+    subtitle: 4 bays
+    layout: { x: 740, y: 260, w: 100, d: 120, h: 90 }
+    ports:
+      - { id: eth0, speed: 1G }
+    interfaces:
+      - { id: eth0, on: eth0, network: lan, ip: 10.0.0.30 }
+
+  - id: ap
+    name: Wi-Fi AP
+    subtitle: access point
+    layout: { x: 500, y: 330, w: 100, d: 70, h: 14 }
+    ports:
+      - { id: eth,   speed: 1G }
+      - { id: radio, kind: radio, networks: [lan] }
+    interfaces:
+      - { id: mgmt, on: eth, network: lan, ip: 10.0.0.5 }
+
+  - id: laptop
+    name: Laptop
+    subtitle: client
+    layout: { x: 600, y: 450, w: 90, d: 60, h: 6 }
+    ports:
+      - { id: wifi, kind: radio }
+    interfaces:
+      - { id: wlan, on: wifi, network: lan, ip: dhcp }
+
+links:
+  - { from: isp:fiber,     to: router:wan,     kind: fiber }
+  - { from: router:lan1,   to: server:nic0 }
+  - { from: router:lan2,   to: switch:uplink }
+  - { from: switch:p2,     to: nas:eth0 }
+  - { from: switch:p3,     to: ap:eth }
+  - { from: laptop:wifi,   to: ap:radio,       kind: wifi }

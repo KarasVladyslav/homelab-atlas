@@ -1,30 +1,28 @@
-// Renders an inventory into a CSS 3D scene with two floors:
-//   hardware (z = 0)    — zones, boxes and the cables lying on the floor
-//   network  (z = netZ) — floating in the air above it: one rectangle per networked node
-//                         (the node's outline seen from above) and the connections between them.
+// Renders the inventory model (model.js) into a CSS 3D scene with two floors:
+//   hardware (z = 0)    — zones, boxes, ports at the foot of each box, cables on the floor
+//   network  (z = netZ) — floating above it: one rectangle per networked node with its ports,
+//                         and the links that carry each network, in that network's colour.
 // Data lives in world coordinates; this file only projects it via CSS transforms.
 (function () {
   'use strict';
 
   const SVG_NS = 'http://www.w3.org/2000/svg';
-  const inv = window.ATLAS_INVENTORY;
+  const M = window.AtlasModel;
   const stage = document.getElementById('stage');
   const scene = document.getElementById('scene');
+  const INVENTORY_URL = 'config/inventory.yaml';
 
   const CORNER_RADIUS = 14;
-  const LINK_STYLE = {
-    copper: { stroke: 'var(--copper)', width: 3 },
-    fiber:  { stroke: 'var(--fiber)',  width: 3 },
-    wifi:   { stroke: 'var(--wifi)',   width: 2, dash: '6 6' },
-    ble:    { stroke: 'var(--ble)',    width: 2, dash: '2 5' },
-  };
-  const isRadio = kind => kind === 'wifi' || kind === 'ble';
+  const KIND_STROKE = { copper: 'var(--copper)', fiber: 'var(--fiber)', wifi: 'var(--wifi)', ble: 'var(--ble)' };
+  const DASH = { wifi: '6 6', ble: '2 5' };
+
+  let model = null;
 
   const px = n => n + 'px';
   const el = (tag, cls) => { const e = document.createElement(tag); if (cls) e.className = cls; return e; };
   const svgEl = (tag, attrs) => {
     const e = document.createElementNS(SVG_NS, tag);
-    for (const [k, v] of Object.entries(attrs || {})) e.setAttribute(k, v);
+    for (const [k, v] of Object.entries(attrs || {})) if (v !== undefined) e.setAttribute(k, v);
     return e;
   };
 
@@ -35,6 +33,12 @@
     return l;
   }
 
+  function placeLabel(l, x, y, z) {
+    Object.assign(l.style, { left: px(x), top: px(y) });
+    l.style.setProperty('--label-z', px(z));
+    return l;
+  }
+
   function sheet(floor) {
     return svgEl('svg', {
       class: 'sheet fade', width: floor.width, height: floor.height,
@@ -42,35 +46,8 @@
     });
   }
 
-  // ---------------------------------------------------------------- line rules
-  //
-  // 1. Seen from above, every straight piece is horizontal or vertical. A diagonal piece in the
-  //    data is split into an L (horizontal first, then vertical) and reported in the console.
-  // 2. Every corner is a quarter circle, never a sharp turn.
-  // 3. Lines end on a node's outline, not in its centre (the data gives points on box edges).
-
-  function orthogonal(points, name) {
-    const out = [points[0]];
-    for (let i = 1; i < points.length; i++) {
-      const [ax, ay] = out[out.length - 1];
-      const [bx, by] = points[i];
-      if (ax !== bx && ay !== by) {
-        console.warn(`atlas: diagonal segment in ${name}, routed as an L`, [ax, ay], [bx, by]);
-        out.push([bx, ay]);
-      }
-      out.push([bx, by]);
-    }
-    // Drop repeated points and points in the middle of a straight run (they are not corners).
-    return out.filter((p, i, a) => {
-      if (i > 0 && p[0] === a[i - 1][0] && p[1] === a[i - 1][1]) return false;
-      if (i === 0 || i === a.length - 1) return true;
-      const [q, r] = [a[i - 1], a[i + 1]];
-      return !((q[0] === p[0] && p[0] === r[0]) || (q[1] === p[1] && p[1] === r[1]));
-    });
-  }
-
-  // Path with each corner replaced by a circular arc. The radius shrinks on short segments so
-  // two neighbouring arcs never overlap.
+  // Path with each (right-angle) corner replaced by a circular arc. The radius shrinks on short
+  // pieces so two neighbouring arcs never overlap.
   function roundedPath(points) {
     const len = (a, b) => Math.hypot(b[0] - a[0], b[1] - a[1]);
     let d = `M${points[0][0]} ${points[0][1]}`;
@@ -87,12 +64,10 @@
     return d + ` L${last[0]} ${last[1]}`;
   }
 
-  const linkPath = link => roundedPath(orthogonal(link.points, `${link.from} → ${link.to}`));
-
   // ---------------------------------------------------------------- hardware floor
 
   function renderHardware(layer) {
-    const { floor } = inv;
+    const { floor } = model;
     const svg = sheet(floor);
     const g = floor.grid || 20;
     svg.innerHTML = `
@@ -100,7 +75,7 @@
         <path d="M${g} 0H0V${g}" fill="none" stroke="var(--grid)" stroke-width="1"/></pattern></defs>
       <rect width="${floor.width}" height="${floor.height}" fill="url(#grid)" stroke="var(--floor-edge)"/>`;
 
-    for (const z of inv.zones || []) {
+    for (const z of model.zones) {
       svg.appendChild(svgEl('rect', {
         x: z.x, y: z.y, width: z.w, height: z.d, rx: 10,
         fill: 'none', stroke: 'var(--zone)', 'stroke-width': 2, 'stroke-dasharray': '10 8',
@@ -110,112 +85,117 @@
       svg.appendChild(t);
     }
 
-    for (const link of inv.links || []) {
-      const s = LINK_STYLE[link.kind] || LINK_STYLE.copper;
+    for (const link of model.links) {
       svg.appendChild(svgEl('path', {
-        d: linkPath(link), fill: 'none', stroke: s.stroke, 'stroke-width': s.width,
-        'stroke-linecap': 'round', ...(s.dash ? { 'stroke-dasharray': s.dash } : {}),
+        d: roundedPath(link.points), fill: 'none', stroke: KIND_STROKE[link.kind] || KIND_STROKE.copper,
+        'stroke-width': link.radio ? 2 : M.widthFor(link.speed), 'stroke-linecap': 'round',
+        'stroke-dasharray': DASH[link.kind],
       }));
+    }
+
+    // Ports at the foot of each box.
+    for (const p of model.ports.values()) {
+      svg.appendChild(svgEl('circle', { cx: p.point[0], cy: p.point[1], r: 3.5, class: 'hw-port' }));
     }
     layer.appendChild(svg);
 
-    for (const node of inv.nodes) layer.appendChild(renderBox(node));
+    for (const node of model.nodes.values()) layer.appendChild(renderBox(node));
   }
 
   // A box is three faces: the top plus the two sides the side-view camera can see
   // (+x "east", +y "south"). In top view the sides collapse to zero width on their own.
   function renderBox(node) {
+    const L = node.layout;
     const box = el('div', 'node');
     box.dataset.id = node.id;
-    Object.assign(box.style, { left: px(node.x), top: px(node.y), width: px(node.w), height: px(node.d) });
+    Object.assign(box.style, { left: px(L.x), top: px(L.y), width: px(L.w), height: px(L.d) });
 
     const top = el('div', 'face top fade');
-    Object.assign(top.style, { width: px(node.w), height: px(node.d), transform: `translateZ(${node.h}px)` });
+    Object.assign(top.style, { width: px(L.w), height: px(L.d), transform: `translateZ(${L.h}px)` });
 
     const east = el('div', 'face east fade');
-    Object.assign(east.style, { left: px(node.w), top: '0', width: px(node.h), height: px(node.d) });
+    Object.assign(east.style, { left: px(L.w), top: '0', width: px(L.h), height: px(L.d) });
 
     const south = el('div', 'face south fade');
-    Object.assign(south.style, { left: '0', top: px(node.d), width: px(node.w), height: px(node.h) });
+    Object.assign(south.style, { left: '0', top: px(L.d), width: px(L.w), height: px(L.h) });
 
-    const l = label(node.name, node.subtitle);
-    Object.assign(l.style, { left: px(node.w / 2), top: px(node.d / 2) });
-    l.style.setProperty('--label-z', px(node.h + 2));
-
-    box.append(top, east, south, l);
+    box.append(top, east, south, placeLabel(label(node.name, node.subtitle), L.w / 2, L.d / 2, L.h + 2));
     return box;
   }
 
   // ---------------------------------------------------------------- network floor
 
   function renderNetwork(layer, netZ) {
-    const { floor } = inv;
-    const nodes = Object.fromEntries(inv.nodes.map(n => [n.id, n]));
-    const networks = inv.networks || [];
+    const svg = sheet(model.floor);
+    const color = id => (model.networks.get(id) || {}).color || 'var(--net-node-stroke)';
 
-    // Lines and rectangles share one SVG: separate planes 1px apart would z-fight.
-    const svg = sheet(floor);
-
-    // Connections: the cables between members of the same network, in the network's colour.
-    for (const net of networks) {
-      const ids = new Set(net.members.map(m => m.node));
-      for (const link of inv.links || []) {
-        if (!ids.has(link.from) || !ids.has(link.to)) continue;
+    // Links: one stroke per network the link carries; several networks are drawn as concentric
+    // strokes (widest first), so a trunk shows all of its colours.
+    for (const link of model.links) {
+      if (!link.networks.length) continue;
+      const w = (link.radio ? 2.5 : M.widthFor(link.speed)) + 1;
+      link.networks.forEach((id, i) => {
         svg.appendChild(svgEl('path', {
-          d: linkPath(link), fill: 'none', stroke: net.color, 'stroke-width': 4,
-          'stroke-linecap': 'round', ...(isRadio(link.kind) ? { 'stroke-dasharray': '8 6' } : {}),
+          d: roundedPath(link.points), fill: 'none', stroke: color(id),
+          'stroke-width': w + (link.networks.length - 1 - i) * 4, 'stroke-linecap': 'round',
+          'stroke-dasharray': link.radio ? '8 6' : undefined,
         }));
+      });
+      if (!link.radio && link.speed) {
+        const [x, y] = M.labelSpot(link.points);
+        layer.appendChild(placeLabel(label(M.formatSpeed(link.speed), null, 'speed link-speed'), x, y, 3));
       }
     }
 
-    // Nodes: every node that is a member of at least one network, as its outline from above.
-    const perNode = new Map();
-    for (const net of networks) {
-      for (const m of net.members) {
-        if (!nodes[m.node]) continue;
-        if (!perNode.has(m.node)) perNode.set(m.node, []);
-        perNode.get(m.node).push({ net, m });
-      }
-    }
-
-    for (const [id, entries] of perNode) {
-      const n = nodes[id];
+    for (const node of model.netNodes) {
+      const L = node.layout;
       svg.appendChild(svgEl('rect', {
-        class: 'netnode', x: n.x, y: n.y, width: n.w, height: n.d, rx: 6,
+        class: 'netnode', x: L.x, y: L.y, width: L.w, height: L.d, rx: 6,
         fill: 'var(--net-node-fill)', stroke: 'var(--net-node-stroke)', 'stroke-width': 2,
       }));
 
       // Threads from the rectangle's corners down to the box: the outline reads as the box's ghost.
-      for (const [cx, cy] of [[n.x, n.y], [n.x + n.w, n.y], [n.x, n.y + n.d], [n.x + n.w, n.y + n.d]]) {
+      for (const [cx, cy] of [[L.x, L.y], [L.x + L.w, L.y], [L.x, L.y + L.d], [L.x + L.w, L.y + L.d]]) {
         const t = el('div', 'thread fade');
-        Object.assign(t.style, { left: px(cx), top: px(cy), height: px(netZ - n.h) });
+        Object.assign(t.style, { left: px(cx), top: px(cy), height: px(netZ - L.h) });
         layer.appendChild(t);
       }
 
-      // One label per node: its name, then one line per address, marked with the network's colour.
-      const l = label(n.name, null, 'netnode');
-      for (const { net, m } of entries) {
-        if (!m.ip) continue;
+      // Ports: dots on the rectangle's edge, coloured by the first network they carry; speed above.
+      for (const p of node.ports) {
+        const [x, y] = p.point;
+        const first = [...p.networks][0];
+        svg.appendChild(svgEl('circle', {
+          cx: x, cy: y, r: 5, class: 'net-port',
+          fill: first ? color(first) : 'var(--net-node-fill)', stroke: 'var(--net-node-stroke)', 'stroke-width': 1.5,
+        }));
+        // The label sits just inside the rectangle, next to its dot: outside is where the cable runs.
+        const text = p.kind === 'radio' ? 'radio' : M.formatSpeed(p.speed);
+        const inset = p.kind === 'radio' ? 24 : 18;
+        if (text) layer.appendChild(placeLabel(label(text, null, 'speed port-speed'), x - p.out[0] * inset, y - p.out[1] * inset, 3));
+      }
+
+      // One label per node: the name, then one line per address, marked with the network's colour.
+      const l = label(node.name, null, 'netnode');
+      for (const i of node.interfaces) {
+        if (!i.ip) continue;
         const line = el('span', 'addr');
-        line.style.setProperty('--net-color', net.color);
-        line.textContent = m.label ? `${m.ip}  ${m.label}` : m.ip;
+        line.style.setProperty('--net-color', i.net ? i.net.color : 'var(--text-muted)');
+        const ip = i.net ? M.shortIp(i.ip, i.net.cidr) : i.ip;
+        line.textContent = i.label ? `${ip}  ${i.label}` : ip;
         l.appendChild(line);
       }
-      Object.assign(l.style, { left: px(n.x + n.w / 2), top: px(n.y + n.d / 2) });
-      l.style.setProperty('--label-z', '3px');   // just above the sheet, or the rectangles cover it in top view
-      layer.appendChild(l);
+      layer.appendChild(placeLabel(l, L.x + L.w / 2, L.y + L.d / 2, 3));
     }
     layer.appendChild(svg);
-
-    renderLegend(networks);
+    renderLegend();
   }
 
   // Colour key for the networks (screen overlay, not part of the scene).
-  function renderLegend(networks) {
+  function renderLegend() {
     const legend = document.getElementById('legend');
-    if (!legend) return;
     legend.replaceChildren();
-    for (const net of networks) {
+    for (const net of model.networks.values()) {
       const row = el('div', 'legend-row');
       row.style.setProperty('--net-color', net.color);
       row.textContent = net.name;
@@ -224,13 +204,27 @@
     }
   }
 
+  // Problems found in the inventory: shown on the page, not only in the console.
+  function renderProblems() {
+    const box = document.getElementById('problems');
+    box.replaceChildren();
+    const all = [...model.errors.map(m => ['error', m]), ...model.warnings.map(m => ['warning', m])];
+    box.hidden = all.length === 0;
+    for (const [level, m] of all) {
+      const row = el('div', 'problem ' + level);
+      row.textContent = m;
+      box.appendChild(row);
+      (level === 'error' ? console.error : console.warn)('atlas:', m);
+    }
+  }
+
   // ---------------------------------------------------------------- scene
 
-  const netHeight = () => Math.max(0, ...inv.nodes.map(n => n.h)) + 70;   // clears the tallest box
+  const netHeight = () => Math.max(0, ...[...model.nodes.values()].map(n => n.layout.h || 0)) + 70;
 
   function render() {
-    const { floor } = inv;
-    document.getElementById('title').textContent = inv.title || '';
+    const { floor } = model;
+    document.getElementById('title').textContent = model.title;
     const netZ = netHeight();
 
     scene.replaceChildren();
@@ -243,6 +237,7 @@
     renderHardware(hw);
     renderNetwork(net, netZ);
     scene.append(hw, net);
+    renderProblems();
     fit(netZ);
   }
 
@@ -258,7 +253,7 @@
 
   // One zoom that fits both views, so switching the camera never needs a re-fit.
   function fit(netZ) {
-    const { width: W, height: D } = inv.floor;
+    const { width: W, height: D } = model.floor;
     const r = stage.getBoundingClientRect();
     const sideW = (W + D) * Math.SQRT1_2;
     const sideH = sideW * Math.cos(58 * Math.PI / 180) + netZ * Math.sin(58 * Math.PI / 180);
@@ -278,7 +273,7 @@
   for (const b of document.querySelectorAll('[data-floor]')) {
     b.addEventListener('click', () => { stage.classList.toggle('on-network', b.dataset.floor === 'network'); press('floor', b.dataset.floor); });
   }
-  window.addEventListener('resize', () => fit(netHeight()));
+  window.addEventListener('resize', () => model && fit(netHeight()));
 
   // ---------------------------------------------------------------- pan and zoom
   //
@@ -340,5 +335,19 @@
     applyView();
   }, { passive: false });
 
-  render();
+  // ---------------------------------------------------------------- load
+
+  function fail(message) {
+    const box = document.getElementById('problems');
+    box.hidden = false;
+    box.replaceChildren(Object.assign(el('div', 'problem error'), { textContent: message }));
+    console.error('atlas:', message);
+  }
+
+  fetch(INVENTORY_URL, { cache: 'no-cache' })
+    .then(r => { if (!r.ok) throw new Error(`${INVENTORY_URL}: HTTP ${r.status}`); return r.text(); })
+    .then(text => { model = M.build(window.jsyaml.load(text)); render(); })
+    .catch(e => fail(location.protocol === 'file:'
+      ? 'Open the page over http, not from disk: e.g. `python3 -m http.server` in the repo, then http://localhost:8000/'
+      : `Could not load the inventory — ${e.message}`));
 })();
