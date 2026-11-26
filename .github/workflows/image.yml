@@ -31,7 +31,7 @@ jobs:
           tags: homelab-atlas:test
 
       # Smoke test the real image: nginx serves the page, and a headless browser actually
-      # renders the scene (boxes on the hardware floor, address pins on the network floor).
+      # renders the scene (boxes on the hardware floor, node outlines on the network floor).
       - name: Render inside the image
         run: |
           docker run -d --name atlas -p 8080:8080 homelab-atlas:test
@@ -39,9 +39,9 @@ jobs:
           curl -fsI http://localhost:8080/config/inventory.js | grep -i 'cache-control: no-cache'
           dom=$(google-chrome --headless=new --no-sandbox --virtual-time-budget=3000 --dump-dom http://localhost:8080/)
           nodes=$(grep -o 'class="node"' <<<"$dom" | wc -l)
-          pins=$(grep -o 'class="pin fade"' <<<"$dom" | wc -l)
-          echo "rendered: $nodes nodes, $pins address pins"
-          test "$nodes" -gt 0 && test "$pins" -gt 0
+          netnodes=$(grep -o 'class="netnode"' <<<"$dom" | wc -l)
+          echo "rendered: $nodes boxes, $netnodes network nodes"
+          test "$nodes" -gt 0 && test "$netnodes" -gt 0
 
       - uses: docker/login-action@v3
         if: github.event_name != 'pull_request'
