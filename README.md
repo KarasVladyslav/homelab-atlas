@@ -28,6 +28,21 @@ Or run the image:
 docker run --rm -p 8080:8080 ghcr.io/karasvladyslav/homelab-atlas:latest
 ```
 
+## Editing
+
+Press **✎ Edit** to change the hardware floor with the mouse:
+
+- drag a box to move it (snaps to the grid);
+- ↻ / ↺ on the floor at its front corners rotate it 90° — ports turn with it;
+- drag the dashed frame's edges to resize it;
+- drag from a port to a port of another box to connect them (one cable per wired
+  port; radio ports only to radio ports);
+- Ctrl+Z / Ctrl+Shift+Z undo and redo, Esc cancels a drag.
+
+The 💾 button saves `inventory.yaml`. Edits are made on the YAML text itself, so
+the saved file differs from yours only where something changed — comments,
+alignment and order stay as you wrote them, and the Git diff shows just that.
+
 ## Your own lab
 
 Describe it in a YAML file and mount it over the example:

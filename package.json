@@ -2,12 +2,14 @@
   "name": "homelab-atlas",
   "private": true,
   "license": "MIT",
-  "description": "Validation tooling for homelab-atlas inventories (the app itself has no build step).",
+  "description": "Tooling for homelab-atlas: inventory validation and vendoring (the app itself has no build step).",
   "scripts": {
-    "validate": "node tools/validate.mjs config/inventory.yaml"
+    "validate": "node tools/validate.mjs config/inventory.yaml",
+    "vendor:yaml": "esbuild tools/yaml-entry.mjs --bundle --minify --format=iife --global-name=YAML --platform=browser --outfile=src/vendor/yaml.min.js"
   },
   "devDependencies": {
     "ajv": "^8.17.1",
-    "js-yaml": "^4.1.0"
+    "esbuild": "^0.28.2",
+    "yaml": "^2.9.1"
   }
 }

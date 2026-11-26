@@ -10,7 +10,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
-const yaml = require('js-yaml');
+const YAML = require('yaml');
 const Ajv = require('ajv');
 const here = dirname(fileURLToPath(import.meta.url));
 const model = require(join(here, '..', 'src', 'model.js'));
@@ -24,7 +24,7 @@ let failed = false;
 for (const file of files) {
   let data;
   try {
-    data = yaml.load(readFileSync(file, 'utf8'));
+    data = YAML.parse(readFileSync(file, 'utf8'));
   } catch (e) {
     console.error(`✗ ${file}: ${e.message}`);
     failed = true;

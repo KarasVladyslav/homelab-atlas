@@ -30,6 +30,8 @@
   --button-active: #ececec;
   --button-active-text: #16171a;
 
+  --accent: #378add;
+
   --camera-duration: 1s;
   --camera-ease: cubic-bezier(.65, 0, .35, 1);
   --side-tilt: 58deg;   /* tilt the floor away from the viewer */
@@ -277,3 +279,60 @@ rect.netnode { fill-opacity: 1; transition: fill-opacity var(--camera-duration) 
 .legend-row { display: flex; align-items: center; gap: 8px; }
 .legend-row::before { content: ""; width: 18px; height: 4px; border-radius: 2px; background: var(--net-color); }
 .legend-row small { color: var(--text-muted); font-size: 11px; }
+
+/* ---------- edit mode ---------- */
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+.toggle button.save { position: relative; display: inline-flex; align-items: center; padding: 6px 10px; }
+.toggle button.save[hidden] { display: none; }
+.toggle button.save.dirty::after {               /* unsaved changes */
+  content: ""; position: absolute; top: 3px; right: 3px;
+  width: 7px; height: 7px; border-radius: 50%; background: #ef9f27;
+}
+
+.stage.editing .layer.hardware .node { cursor: grab; }
+.stage.editing .layer.hardware .node.selected .face.top { outline: 2px solid var(--accent); outline-offset: -2px; }
+.stage.editing .hw-port { r: 6px; cursor: crosshair; fill: var(--accent); stroke: var(--face-top); }
+
+/* Handles lie on the hardware floor, a hair above it. */
+.handle { position: absolute; transform: translateZ(1px); }
+.handle.frame { border: 2px dashed var(--accent); border-radius: 4px; pointer-events: none; }
+.handle.edge { background: transparent; }
+.handle.edge:hover { background: color-mix(in srgb, var(--accent) 35%, transparent); }
+.handle.edge-ew { cursor: ew-resize; }
+.handle.edge-ns { cursor: ns-resize; }
+.handle.rotate {
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 17px;
+  line-height: 26px;
+  text-align: center;
+  cursor: pointer;
+  user-select: none;
+}
+.handle.rubber {
+  height: 0;
+  border-top: 3px dashed var(--accent);
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+
+.toast {
+  position: absolute;
+  left: 50%;
+  top: 12px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: none;
+}
+.toast-item {
+  padding: 7px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  background: var(--label-bg);
+  border: 1px solid var(--label-border);
+}
+.toast-item.error { border-left: 4px solid #e24b4a; }

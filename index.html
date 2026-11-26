@@ -10,6 +10,13 @@
   <header class="bar">
     <span class="brand">homelab-atlas <span class="title" id="title"></span></span>
     <div class="controls">
+      <div class="toggle" role="group" aria-label="Mode">
+        <button type="button" id="edit-toggle" aria-pressed="false" title="Edit the hardware floor">✎ Edit</button>
+        <button type="button" id="save" class="save" hidden title="Save inventory.yaml">
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M4 4h12l4 4v12H4z M8 4v5h7V4 M7 20v-6h10v6"/></svg>
+          <span class="sr-only">Save</span>
+        </button>
+      </div>
       <div class="toggle" role="group" aria-label="Floor">
         <button type="button" data-floor="hardware" aria-pressed="true">Hardware</button>
         <button type="button" data-floor="network" aria-pressed="false">Network</button>
@@ -25,12 +32,15 @@
     <div class="scene" id="scene"></div>
     <div class="legend" id="legend" aria-label="Networks"></div>
     <div class="problems" id="problems" hidden aria-live="polite"></div>
+    <div class="toast" id="toast" aria-live="polite"></div>
   </main>
 
   <!-- No build step: plain scripts. The inventory (config/inventory.yaml) is fetched, so the page
        needs to be served over http (any static server will do). -->
-  <script src="src/vendor/js-yaml.min.js"></script>
+  <script src="src/vendor/yaml.min.js"></script>
+  <script src="src/yamledit.js"></script>
   <script src="src/model.js"></script>
   <script src="src/scene.js"></script>
+  <script src="src/editor.js"></script>
 </body>
 </html>

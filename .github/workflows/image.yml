@@ -28,12 +28,15 @@ jobs:
         run: |
           node --check src/model.js
           node --check src/scene.js
+          node --check src/editor.js
+          node --check src/yamledit.js
 
       # Same check deployments run on their own inventories (schema + references + IPs).
       - name: Validate example inventory
         run: |
           npm ci
           node tools/validate.mjs config/inventory.yaml
+          node tools/test-yamledit.mjs
 
       - uses: docker/build-push-action@v6
         with:

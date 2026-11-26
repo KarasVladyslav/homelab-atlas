@@ -17,6 +17,8 @@
   const DASH = { wifi: '6 6', ble: '2 5' };
 
   let model = null;
+  let text = null;          // the inventory as YAML text — the editor changes this, then we re-render
+  let fitted = false;
 
   const px = n => n + 'px';
   const el = (tag, cls) => { const e = document.createElement(tag); if (cls) e.className = cls; return e; };
@@ -95,18 +97,19 @@
 
     // Ports at the foot of each box.
     for (const p of model.ports.values()) {
-      svg.appendChild(svgEl('circle', { cx: p.point[0], cy: p.point[1], r: 3.5, class: 'hw-port' }));
+      svg.appendChild(svgEl('circle', { cx: p.point[0], cy: p.point[1], r: 3.5, class: 'hw-port', 'data-port': p.key }));
     }
     layer.appendChild(svg);
 
     for (const node of model.nodes.values()) layer.appendChild(renderBox(node));
+    if (Atlas.decorate) Atlas.decorate(layer, model);    // editor handles (selection, rotate, resize, …)
   }
 
   // A box is three faces: the top plus the two sides the side-view camera can see
   // (+x "east", +y "south"). In top view the sides collapse to zero width on their own.
   function renderBox(node) {
     const L = node.layout;
-    const box = el('div', 'node');
+    const box = el('div', 'node' + (Atlas.selected === node.id ? ' selected' : ''));
     box.dataset.id = node.id;
     Object.assign(box.style, { left: px(L.x), top: px(L.y), width: px(L.w), height: px(L.d) });
 
@@ -238,7 +241,13 @@
     renderNetwork(net, netZ);
     scene.append(hw, net);
     renderProblems();
-    fit(netZ);
+    if (!fitted) { fit(netZ); fitted = true; }
+  }
+
+  function setText(newText) {
+    text = newText;
+    model = M.build(window.YAML.parse(text));
+    render();
   }
 
   // What the user did to the camera: pan (world coordinates, along the floor) and zoom (a factor
@@ -274,6 +283,26 @@
     b.addEventListener('click', () => { stage.classList.toggle('on-network', b.dataset.floor === 'network'); press('floor', b.dataset.floor); });
   }
   window.addEventListener('resize', () => model && fit(netHeight()));
+
+  // ---------------------------------------------------------------- API for the editor
+
+  const Atlas = window.Atlas = {
+    get model() { return model; },
+    get text() { return text; },
+    setText,
+    render: () => model && render(),
+    stage, scene, view,
+    selected: null,
+    decorate: null,
+    // Floor point (hardware floor, z = 0) under a screen point. The camera maps a floor point p to
+    // screen = stageCentre + zoom · Rx(tilt) · Rz(spin) · (p − floorCentre + pan), so invert that.
+    floorAt(clientX, clientY) {
+      const r = stage.getBoundingClientRect();
+      const [fx, fy] = screenToFloor(clientX - (r.left + r.width / 2), clientY - (r.top + r.height / 2),
+        view.fitZoom * view.zoom, cameraNow());
+      return [model.floor.width / 2 - view.panX + fx, model.floor.height / 2 - view.panY + fy];
+    },
+  };
 
   // ---------------------------------------------------------------- pan and zoom
   //
@@ -346,7 +375,7 @@
 
   fetch(INVENTORY_URL, { cache: 'no-cache' })
     .then(r => { if (!r.ok) throw new Error(`${INVENTORY_URL}: HTTP ${r.status}`); return r.text(); })
-    .then(text => { model = M.build(window.jsyaml.load(text)); render(); })
+    .then(t => { setText(t); Atlas.loadedText = t; document.dispatchEvent(new Event('atlas:loaded')); })
     .catch(e => fail(location.protocol === 'file:'
       ? 'Open the page over http, not from disk: e.g. `python3 -m http.server` in the repo, then http://localhost:8000/'
       : `Could not load the inventory — ${e.message}`));
