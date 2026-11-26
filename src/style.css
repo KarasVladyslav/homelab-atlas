@@ -104,11 +104,13 @@ body { display: flex; flex-direction: column; }
 }
 
 .stage { position: relative; flex: 1; overflow: hidden; }
+.stage.panning { cursor: grabbing; }
 
 /* ---------- camera ----------
    No `perspective` anywhere: that keeps the projection orthographic (isometric-like).
-   translateZ(-focus) is applied first (rightmost), so it slides the world down until the
-   active floor sits in the middle of the screen. */
+   The rightmost transforms apply first: translate(pan) slides the world along its own floor
+   (so a view switch keeps looking at the same spot), translateZ(-focus) slides it down until
+   the active floor sits in the middle of the screen. */
 .scene {
   position: absolute;
   left: 50%;
@@ -121,7 +123,8 @@ body { display: flex; flex-direction: column; }
   --net-alpha: var(--glass-alpha);
   transform:
     translate(-50%, -50%) scale(var(--zoom, 1))
-    rotateX(var(--tilt)) rotateZ(var(--spin)) translateZ(calc(-1 * var(--focus-z)));
+    rotateX(var(--tilt)) rotateZ(var(--spin)) translateZ(calc(-1 * var(--focus-z)))
+    translate(var(--pan-x, 0px), var(--pan-y, 0px));
   transition-property: --tilt, --spin, --focus-z, --hw-alpha, --net-alpha;
   transition-duration: var(--camera-duration);
   transition-timing-function: var(--camera-ease);

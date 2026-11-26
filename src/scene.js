@@ -270,5 +270,52 @@
   }
   window.addEventListener('resize', () => fit(netHeight()));
 
+  // ---------------------------------------------------------------- pan (hold the right button)
+  //
+  // The pan lives in world coordinates (along the floor), not on the screen. A mouse delta is
+  // turned into a floor delta by undoing the camera: screen = zoom · Rx(tilt) · Rz(spin) · floor,
+  // and for a point on the floor Rx only squashes y by cos(tilt).
+  const pan = { x: 0, y: 0 };
+  let drag = null;
+
+  function cameraAngles() {
+    const cs = getComputedStyle(scene);
+    const deg = v => parseFloat(v) * Math.PI / 180;
+    return { tilt: deg(cs.getPropertyValue('--tilt')), spin: deg(cs.getPropertyValue('--spin')),
+             zoom: parseFloat(cs.getPropertyValue('--zoom')) || 1 };
+  }
+
+  function applyPan() {
+    scene.style.setProperty('--pan-x', px(pan.x));
+    scene.style.setProperty('--pan-y', px(pan.y));
+  }
+
+  stage.addEventListener('contextmenu', e => e.preventDefault());
+  stage.addEventListener('pointerdown', e => {
+    if (e.button !== 2) return;
+    drag = { x: e.clientX, y: e.clientY, cam: cameraAngles() };
+    stage.setPointerCapture(e.pointerId);
+    stage.classList.add('panning');
+  });
+  stage.addEventListener('pointermove', e => {
+    if (!drag) return;
+    const { tilt, spin, zoom } = drag.cam;
+    const a = (e.clientX - drag.x) / zoom;
+    const b = (e.clientY - drag.y) / (zoom * Math.max(Math.cos(tilt), 0.2));
+    pan.x += a * Math.cos(spin) + b * Math.sin(spin);
+    pan.y += -a * Math.sin(spin) + b * Math.cos(spin);
+    drag.x = e.clientX;
+    drag.y = e.clientY;
+    applyPan();
+  });
+  const endDrag = e => {
+    if (!drag) return;
+    drag = null;
+    stage.classList.remove('panning');
+    if (stage.hasPointerCapture(e.pointerId)) stage.releasePointerCapture(e.pointerId);
+  };
+  stage.addEventListener('pointerup', endDrag);
+  stage.addEventListener('pointercancel', endDrag);
+
   render();
 })();
