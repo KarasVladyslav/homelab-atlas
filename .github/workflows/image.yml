@@ -37,6 +37,8 @@ jobs:
           npm ci
           node tools/validate.mjs config/inventory.yaml
           node tools/test-yamledit.mjs
+          # the vendored browser bundle must actually contain the library (it once shipped empty)
+          node -e "const vm=require('vm'),fs=require('fs');const c={};vm.createContext(c);vm.runInContext(fs.readFileSync('src/vendor/yaml.min.js','utf8')+';this.t=typeof YAML.parseDocument',c);if(c.t!=='function'){console.error('src/vendor/yaml.min.js has no YAML.parseDocument');process.exit(1)}"
 
       - uses: docker/build-push-action@v6
         with:
