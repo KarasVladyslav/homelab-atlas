@@ -297,8 +297,21 @@ rect.netnode { fill-opacity: 1; transition: fill-opacity var(--camera-duration) 
 /* Handles lie on the hardware floor, a hair above it. */
 .handle { position: absolute; transform: translateZ(1px); }
 .handle.frame { border: 2px dashed var(--accent); border-radius: 4px; pointer-events: none; }
-.handle.edge { background: transparent; }
-.handle.edge:hover { background: color-mix(in srgb, var(--accent) 35%, transparent); }
+/* Resize strips: always faintly visible with a grip arrow, brighter under the pointer. */
+.handle.edge {
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.handle.edge:hover { background: color-mix(in srgb, var(--accent) 40%, transparent); }
+.handle.edge .grip {
+  width: 22px; height: 22px; flex: none;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 14px; line-height: 22px; text-align: center;
+  pointer-events: none;
+}
 .handle.edge-ew { cursor: ew-resize; }
 .handle.edge-ns { cursor: ns-resize; }
 .handle.rotate {

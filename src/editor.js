@@ -134,13 +134,22 @@
     const node = A.selected && model.nodes.get(A.selected);
     if (!node) return;
     const L = node.layout;
-    const S = 12, R = 26, gap = 10;
+    const S = 16, R = 26, gap = 10;
+    // Resize strips along each edge, with a grip arrow in the middle showing which way they pull.
+    const edge = (cls, x, y, w, d, handle, arrow) => {
+      const e = floorEl('edge ' + cls, x, y, w, d, { handle });
+      const grip = document.createElement('span');
+      grip.className = 'grip';
+      grip.textContent = arrow;
+      e.appendChild(grip);
+      return e;
+    };
     layer.append(
       floorEl('frame', L.x - 2, L.y - 2, L.w + 4, L.d + 4, {}),
-      floorEl('edge edge-ew', L.x + L.w, L.y, S, L.d, { handle: 'e' }),
-      floorEl('edge edge-ew', L.x - S, L.y, S, L.d, { handle: 'w' }),
-      floorEl('edge edge-ns', L.x, L.y + L.d, L.w, S, { handle: 's' }),
-      floorEl('edge edge-ns', L.x, L.y - S, L.w, S, { handle: 'n' }),
+      edge('edge-ew', L.x + L.w + 2, L.y, S, L.d, 'e', '↔'),
+      edge('edge-ew', L.x - S - 2, L.y, S, L.d, 'w', '↔'),
+      edge('edge-ns', L.x, L.y + L.d + 2, L.w, S, 's', '↕'),
+      edge('edge-ns', L.x, L.y - S - 2, L.w, S, 'n', '↕'),
       // Rotate buttons on the front corners — the ones the Side camera always sees.
       Object.assign(floorEl('rotate', L.x + L.w + gap, L.y + L.d + gap, R, R, { handle: 'rotate-cw' }), { textContent: '↻', title: 'Rotate 90° clockwise' }),
       Object.assign(floorEl('rotate', L.x - gap - R, L.y + L.d + gap, R, R, { handle: 'rotate-ccw' }), { textContent: '↺', title: 'Rotate 90° counter-clockwise' }),
