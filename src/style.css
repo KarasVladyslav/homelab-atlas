@@ -23,7 +23,9 @@
   --fiber: #ef9f27;
   --wifi: #7f77dd;
   --ble: #5dcaa5;
-  --glass: #9fc4ee;
+  --net-node-fill: #1f2125;
+  --net-node-stroke: #8d95a3;
+  --thread: #5a5f69;
   --button: #24262b;
   --button-active: #ececec;
   --button-active-text: #16171a;
@@ -33,7 +35,7 @@
   --side-tilt: 58deg;   /* tilt the floor away from the viewer */
   --side-spin: 45deg;   /* rotate around the vertical */
   --dim-alpha: .22;     /* the floor you are not working on */
-  --glass-alpha: .35;   /* the network floor while you work on hardware */
+  --glass-alpha: .35;   /* the network floor while you work on hardware: it hangs in the air, faint */
 }
 
 @media (prefers-color-scheme: light) {
@@ -50,7 +52,9 @@
     --label-border: #d3d1c7;
     --text: #1f1f1d;
     --text-muted: #6b6a66;
-    --glass: #6aa3dd;
+    --net-node-fill: #ffffff;
+    --net-node-stroke: #6b6a66;
+    --thread: #b4b2a9;
     --button: #ffffff;
     --button-active: #1f1f1d;
     --button-active-text: #ffffff;
@@ -164,22 +168,13 @@ body { display: flex; flex-direction: column; }
 .face.south { background: var(--face-south); transform-origin: 0 0; transform: rotateX(90deg); }
 
 /* ---------- network ---------- */
-/* Thread from an address on the glass down to the box it lives on (goes down via rotateX(-90deg)). */
+/* Thread from a corner of a network rectangle down to its box (goes down via rotateX(-90deg)). */
 .thread {
   position: absolute;
   width: 0;
-  border-left: 1px dashed var(--thread-color, var(--text-muted));
+  border-left: 1px dashed var(--thread);
   transform-origin: 0 0;
   transform: rotateX(-90deg);
-}
-
-.pin {
-  position: absolute;
-  width: 10px; height: 10px;
-  margin: -5px 0 0 -5px;
-  border-radius: 50%;
-  background: var(--pin-color);
-  transform: translateZ(1px);
 }
 
 /* ---------- labels ----------
@@ -204,10 +199,37 @@ body { display: flex; flex-direction: column; }
 
 .label small { display: block; font-size: 11px; color: var(--text-muted); }
 
-.label.addr {
-  border-color: var(--pin-color);
+/* Network rectangles are solid on the network floor and just outlines while you work on hardware,
+   so they never hide the boxes underneath. */
+rect.netnode { fill-opacity: 1; transition: fill-opacity var(--camera-duration) var(--camera-ease); }
+.stage:not(.on-network) rect.netnode { fill-opacity: 0; }
+
+/* Network node label: the name, then one line per address with its network's colour. */
+.label.netnode .addr {
+  display: block;
+  margin-top: 2px;
+  padding-left: 7px;
+  border-left: 3px solid var(--net-color);
   font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
-  font-size: 11.5px;
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: pre;
 }
 
-.label.net { border-width: 2px; border-color: var(--pin-color); font-weight: 500; }
+/* ---------- legend (screen overlay, shown on the network floor) ---------- */
+.legend {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  opacity: 0;
+  transition: opacity var(--camera-duration) var(--camera-ease);
+  pointer-events: none;
+}
+.stage.on-network .legend { opacity: 1; }
+.legend-row { display: flex; align-items: center; gap: 8px; }
+.legend-row::before { content: ""; width: 18px; height: 4px; border-radius: 2px; background: var(--net-color); }
+.legend-row small { color: var(--text-muted); font-size: 11px; }

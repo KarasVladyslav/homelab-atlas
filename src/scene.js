@@ -1,7 +1,7 @@
 // Renders an inventory into a CSS 3D scene with two floors:
-//   hardware (z = 0)      — zones, boxes and the cables lying on the floor
-//   network  (z = netZ)   — a glass plate with network outlines, logical links and addresses,
-//                           every element anchored to the hardware right below it.
+//   hardware (z = 0)    — zones, boxes and the cables lying on the floor
+//   network  (z = netZ) — floating in the air above it: one rectangle per networked node
+//                         (the node's outline seen from above) and the connections between them.
 // Data lives in world coordinates; this file only projects it via CSS transforms.
 (function () {
   'use strict';
@@ -11,12 +11,14 @@
   const stage = document.getElementById('stage');
   const scene = document.getElementById('scene');
 
+  const CORNER_RADIUS = 14;
   const LINK_STYLE = {
     copper: { stroke: 'var(--copper)', width: 3 },
     fiber:  { stroke: 'var(--fiber)',  width: 3 },
     wifi:   { stroke: 'var(--wifi)',   width: 2, dash: '6 6' },
     ble:    { stroke: 'var(--ble)',    width: 2, dash: '2 5' },
   };
+  const isRadio = kind => kind === 'wifi' || kind === 'ble';
 
   const px = n => n + 'px';
   const el = (tag, cls) => { const e = document.createElement(tag); if (cls) e.className = cls; return e; };
@@ -25,7 +27,6 @@
     for (const [k, v] of Object.entries(attrs || {})) e.setAttribute(k, v);
     return e;
   };
-  const pathD = points => 'M' + points.map(p => p.join(' ')).join(' L');
 
   function label(text, sub, extraClass) {
     const l = el('div', 'label fade' + (extraClass ? ' ' + extraClass : ''));
@@ -40,6 +41,53 @@
       viewBox: `0 0 ${floor.width} ${floor.height}`,
     });
   }
+
+  // ---------------------------------------------------------------- line rules
+  //
+  // 1. Seen from above, every straight piece is horizontal or vertical. A diagonal piece in the
+  //    data is split into an L (horizontal first, then vertical) and reported in the console.
+  // 2. Every corner is a quarter circle, never a sharp turn.
+  // 3. Lines end on a node's outline, not in its centre (the data gives points on box edges).
+
+  function orthogonal(points, name) {
+    const out = [points[0]];
+    for (let i = 1; i < points.length; i++) {
+      const [ax, ay] = out[out.length - 1];
+      const [bx, by] = points[i];
+      if (ax !== bx && ay !== by) {
+        console.warn(`atlas: diagonal segment in ${name}, routed as an L`, [ax, ay], [bx, by]);
+        out.push([bx, ay]);
+      }
+      out.push([bx, by]);
+    }
+    // Drop repeated points and points in the middle of a straight run (they are not corners).
+    return out.filter((p, i, a) => {
+      if (i > 0 && p[0] === a[i - 1][0] && p[1] === a[i - 1][1]) return false;
+      if (i === 0 || i === a.length - 1) return true;
+      const [q, r] = [a[i - 1], a[i + 1]];
+      return !((q[0] === p[0] && p[0] === r[0]) || (q[1] === p[1] && p[1] === r[1]));
+    });
+  }
+
+  // Path with each corner replaced by a circular arc. The radius shrinks on short segments so
+  // two neighbouring arcs never overlap.
+  function roundedPath(points) {
+    const len = (a, b) => Math.hypot(b[0] - a[0], b[1] - a[1]);
+    let d = `M${points[0][0]} ${points[0][1]}`;
+    for (let i = 1; i < points.length - 1; i++) {
+      const [a, p, b] = [points[i - 1], points[i], points[i + 1]];
+      const r = Math.min(CORNER_RADIUS, len(a, p) / 2, len(p, b) / 2);
+      const d1 = [(p[0] - a[0]) / len(a, p), (p[1] - a[1]) / len(a, p)];
+      const d2 = [(b[0] - p[0]) / len(p, b), (b[1] - p[1]) / len(p, b)];
+      const sweep = d1[0] * d2[1] - d1[1] * d2[0] > 0 ? 1 : 0;   // y points down: positive = clockwise
+      d += ` L${p[0] - d1[0] * r} ${p[1] - d1[1] * r}`;
+      d += ` A${r} ${r} 0 0 ${sweep} ${p[0] + d2[0] * r} ${p[1] + d2[1] * r}`;
+    }
+    const last = points[points.length - 1];
+    return d + ` L${last[0]} ${last[1]}`;
+  }
+
+  const linkPath = link => roundedPath(orthogonal(link.points, `${link.from} → ${link.to}`));
 
   // ---------------------------------------------------------------- hardware floor
 
@@ -65,8 +113,8 @@
     for (const link of inv.links || []) {
       const s = LINK_STYLE[link.kind] || LINK_STYLE.copper;
       svg.appendChild(svgEl('path', {
-        d: pathD(link.points), fill: 'none', stroke: s.stroke, 'stroke-width': s.width,
-        'stroke-linejoin': 'round', 'stroke-linecap': 'round', ...(s.dash ? { 'stroke-dasharray': s.dash } : {}),
+        d: linkPath(link), fill: 'none', stroke: s.stroke, 'stroke-width': s.width,
+        'stroke-linecap': 'round', ...(s.dash ? { 'stroke-dasharray': s.dash } : {}),
       }));
     }
     layer.appendChild(svg);
@@ -100,108 +148,90 @@
 
   // ---------------------------------------------------------------- network floor
 
-  // Convex hull (monotone chain) — the outline of a network around its members' footprints.
-  function hull(points) {
-    const p = points.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
-    const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
-    const lower = [], upper = [];
-    for (const q of p) { while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], q) <= 0) lower.pop(); lower.push(q); }
-    for (const q of p.reverse()) { while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], q) <= 0) upper.pop(); upper.push(q); }
-    return lower.slice(0, -1).concat(upper.slice(0, -1));
-  }
-
   function renderNetwork(layer, netZ) {
     const { floor } = inv;
     const nodes = Object.fromEntries(inv.nodes.map(n => [n.id, n]));
     const networks = inv.networks || [];
 
-    // The glass is part of the same SVG as the outlines: two planes 1px apart would z-fight
-    // and chew holes in the lines.
+    // Lines and rectangles share one SVG: separate planes 1px apart would z-fight.
     const svg = sheet(floor);
-    svg.appendChild(svgEl('rect', {
-      width: floor.width, height: floor.height, rx: 6,
-      fill: 'var(--glass)', 'fill-opacity': .14, stroke: 'var(--glass)',
-    }));
 
-    networks.forEach((net, i) => {
-      const members = net.members.filter(m => nodes[m.node]);
-      const ids = new Set(members.map(m => m.node));
-      const pad = 16 + i * 10;
-      const corners = [];
-      for (const id of ids) {
-        const n = nodes[id];
-        corners.push([n.x - pad, n.y - pad], [n.x + n.w + pad, n.y - pad],
-                     [n.x + n.w + pad, n.y + n.d + pad], [n.x - pad, n.y + n.d + pad]);
-      }
-      const outline = hull(corners);
-      svg.appendChild(svgEl('path', {
-        d: pathD(outline) + 'Z', fill: net.color, 'fill-opacity': .10,
-        stroke: net.color, 'stroke-width': 2, 'stroke-linejoin': 'round',
-      }));
-
-      // Logical links follow the cables they ride on, so the two floors line up. Cables stop at
-      // box edges; up here there are no boxes, so extend each one to the centres of its ends.
-      const centre = n => [n.x + n.w / 2, n.y + n.d / 2];
+    // Connections: the cables between members of the same network, in the network's colour.
+    for (const net of networks) {
+      const ids = new Set(net.members.map(m => m.node));
       for (const link of inv.links || []) {
         if (!ids.has(link.from) || !ids.has(link.to)) continue;
-        const points = [centre(nodes[link.from]), ...link.points, centre(nodes[link.to])];
         svg.appendChild(svgEl('path', {
-          d: pathD(points), fill: 'none', stroke: net.color, 'stroke-width': 5,
-          'stroke-linejoin': 'round', 'stroke-linecap': 'round', 'stroke-opacity': .9,
-          ...(link.kind === 'wifi' || link.kind === 'ble' ? { 'stroke-dasharray': '8 6' } : {}),
+          d: linkPath(link), fill: 'none', stroke: net.color, 'stroke-width': 4,
+          'stroke-linecap': 'round', ...(isRadio(link.kind) ? { 'stroke-dasharray': '8 6' } : {}),
         }));
       }
+    }
 
-      // Network name on the left-most corner of its outline, away from the address labels.
-      const anchor = outline.reduce((a, b) => (b[0] < a[0] ? b : a));
-      const nl = label(net.name, net.cidr, 'net');
-      nl.style.setProperty('--pin-color', net.color);
-      Object.assign(nl.style, { left: px(anchor[0] + 10), top: px(anchor[1]) });
-      layer.appendChild(nl);
-    });
-    layer.appendChild(svg);
-
-    // Addresses: one pin per (network, member), spread across the member's footprint,
-    // with a thread down to the box it lives on.
-    const perNode = {};
+    // Nodes: every node that is a member of at least one network, as its outline from above.
+    const perNode = new Map();
     for (const net of networks) {
       for (const m of net.members) {
         if (!nodes[m.node]) continue;
-        (perNode[m.node] = perNode[m.node] || []).push({ net, m });
+        if (!perNode.has(m.node)) perNode.set(m.node, []);
+        perNode.get(m.node).push({ net, m });
       }
     }
-    for (const [id, entries] of Object.entries(perNode)) {
+
+    for (const [id, entries] of perNode) {
       const n = nodes[id];
-      entries.forEach(({ net, m }, i) => {
-        const x = n.x + n.w * (i + 1) / (entries.length + 1);
-        const y = n.y + n.d / 2;
+      svg.appendChild(svgEl('rect', {
+        class: 'netnode', x: n.x, y: n.y, width: n.w, height: n.d, rx: 6,
+        fill: 'var(--net-node-fill)', stroke: 'var(--net-node-stroke)', 'stroke-width': 2,
+      }));
 
-        const thread = el('div', 'thread fade');
-        Object.assign(thread.style, { left: px(x), top: px(y), height: px(netZ - n.h) });
-        thread.style.setProperty('--thread-color', net.color);
+      // Threads from the rectangle's corners down to the box: the outline reads as the box's ghost.
+      for (const [cx, cy] of [[n.x, n.y], [n.x + n.w, n.y], [n.x, n.y + n.d], [n.x + n.w, n.y + n.d]]) {
+        const t = el('div', 'thread fade');
+        Object.assign(t.style, { left: px(cx), top: px(cy), height: px(netZ - n.h) });
+        layer.appendChild(t);
+      }
 
-        const pin = el('div', 'pin fade');
-        Object.assign(pin.style, { left: px(x), top: px(y) });
-        pin.style.setProperty('--pin-color', net.color);
+      // One label per node: its name, then one line per address, marked with the network's colour.
+      const l = label(n.name, null, 'netnode');
+      for (const { net, m } of entries) {
+        if (!m.ip) continue;
+        const line = el('span', 'addr');
+        line.style.setProperty('--net-color', net.color);
+        line.textContent = m.label ? `${m.ip}  ${m.label}` : m.ip;
+        l.appendChild(line);
+      }
+      Object.assign(l.style, { left: px(n.x + n.w / 2), top: px(n.y + n.d / 2) });
+      l.style.setProperty('--label-z', '3px');   // just above the sheet, or the rectangles cover it in top view
+      layer.appendChild(l);
+    }
+    layer.appendChild(svg);
 
-        layer.append(thread, pin);
-        if (m.ip) {
-          const l = label(m.ip, m.label || n.name, 'addr');
-          l.style.setProperty('--pin-color', net.color);
-          Object.assign(l.style, { left: px(x), top: px(y) });
-          l.style.setProperty('--lift', px(i * 40));   // several addresses on one box: stack them
-          layer.appendChild(l);
-        }
-      });
+    renderLegend(networks);
+  }
+
+  // Colour key for the networks (screen overlay, not part of the scene).
+  function renderLegend(networks) {
+    const legend = document.getElementById('legend');
+    if (!legend) return;
+    legend.replaceChildren();
+    for (const net of networks) {
+      const row = el('div', 'legend-row');
+      row.style.setProperty('--net-color', net.color);
+      row.textContent = net.name;
+      if (net.cidr) { const s = el('small'); s.textContent = net.cidr; row.appendChild(s); }
+      legend.appendChild(row);
     }
   }
 
   // ---------------------------------------------------------------- scene
 
+  const netHeight = () => Math.max(0, ...inv.nodes.map(n => n.h)) + 70;   // clears the tallest box
+
   function render() {
     const { floor } = inv;
     document.getElementById('title').textContent = inv.title || '';
-    const netZ = Math.max(0, ...inv.nodes.map(n => n.h)) + 70;   // glass clears the tallest box
+    const netZ = netHeight();
 
     scene.replaceChildren();
     scene.style.width = px(floor.width);
@@ -238,7 +268,7 @@
   for (const b of document.querySelectorAll('[data-floor]')) {
     b.addEventListener('click', () => { stage.classList.toggle('on-network', b.dataset.floor === 'network'); press('floor', b.dataset.floor); });
   }
-  window.addEventListener('resize', () => fit(Math.max(0, ...inv.nodes.map(n => n.h)) + 70));
+  window.addEventListener('resize', () => fit(netHeight()));
 
   render();
 })();

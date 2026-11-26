@@ -8,8 +8,12 @@
 //
 // Two floors:
 //   hardware — zones (areas of the floor), nodes (boxes) and links (cables, radio) lying on the floor
-//   network  — networks drawn on a glass plate above the hardware; every member points at a
-//              hardware node, so the network floor follows the hardware layout on its own.
+//   network  — floats above the hardware: every member of a network points at a hardware node
+//              and is drawn as that node's outline; connections are the links between members.
+//
+// Link rules: seen from above, every straight piece is horizontal or vertical (a diagonal is
+// routed as an L and reported in the console), corners are drawn rounded, and the first/last
+// points sit on the edges of the two boxes.
 window.ATLAS_INVENTORY = {
   title: 'Example lab',
   floor: { width: 900, height: 560, grid: 20 },
@@ -36,7 +40,7 @@ window.ATLAS_INVENTORY = {
     { from: 'router', to: 'switch', kind: 'copper', points: [[260, 185], [480, 185]] },
     { from: 'switch', to: 'nas',    kind: 'copper', points: [[630, 185], [770, 185], [770, 280]] },
     { from: 'switch', to: 'ap',     kind: 'copper', points: [[545, 210], [545, 360]] },
-    { from: 'ap',     to: 'laptop', kind: 'wifi',   points: [[590, 400], [705, 460]] },
+    { from: 'ap',     to: 'laptop', kind: 'wifi',   points: [[590, 400], [705, 400], [705, 460]] },
   ],
 
   networks: [
