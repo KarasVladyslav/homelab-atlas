@@ -1,0 +1,153 @@
+/* Camera angles are registered so the browser knows they are angles and can animate them.
+   Every face and label reads these two variables, so one transition moves the whole scene. */
+@property --tilt { syntax: '<angle>'; inherits: true; initial-value: 0deg; }
+@property --spin { syntax: '<angle>'; inherits: true; initial-value: 0deg; }
+
+:root {
+  --bg: #16171a;
+  --grid: #2a2c31;
+  --floor-edge: #3a3d44;
+  --face-top: #3b3e45;
+  --face-east: #2f3238;
+  --face-south: #26282d;
+  --edge: #50545c;
+  --label-bg: #1f2125;
+  --label-border: #3f434a;
+  --text: #ececec;
+  --text-muted: #9a9ca3;
+  --cable: #1d9e75;
+  --wifi: #7f77dd;
+  --button: #24262b;
+  --button-active: #ececec;
+  --button-active-text: #16171a;
+
+  --camera-duration: 1s;
+  --camera-ease: cubic-bezier(.65, 0, .35, 1);
+  /* Side view: rotate 45° around the vertical, then tilt the floor away. */
+  --side-tilt: 58deg;
+  --side-spin: 45deg;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f4f4f2;
+    --grid: #e0dfda;
+    --floor-edge: #c9c8c2;
+    --face-top: #ffffff;
+    --face-east: #e9e8e4;
+    --face-south: #d9d8d3;
+    --edge: #a9a8a2;
+    --label-bg: #ffffff;
+    --label-border: #d3d1c7;
+    --text: #1f1f1d;
+    --text-muted: #6b6a66;
+    --button: #ffffff;
+    --button-active: #1f1f1d;
+    --button-active-text: #ffffff;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+body { display: flex; flex-direction: column; }
+
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+}
+
+.brand { font-weight: 500; }
+
+.view-toggle { display: flex; gap: 4px; }
+
+.view-toggle button {
+  font: inherit;
+  color: var(--text);
+  background: var(--button);
+  border: 1px solid var(--label-border);
+  border-radius: 999px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+
+.view-toggle button[aria-pressed="true"] {
+  background: var(--button-active);
+  color: var(--button-active-text);
+  border-color: var(--button-active);
+}
+
+.stage {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* No `perspective` anywhere: that is what keeps the projection orthographic (isometric-like). */
+.scene {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform-style: preserve-3d;
+  --tilt: 0deg;
+  --spin: 0deg;
+  transform: translate(-50%, -50%) scale(var(--zoom, 1)) rotateX(var(--tilt)) rotateZ(var(--spin));
+  transition:
+    --tilt var(--camera-duration) var(--camera-ease),
+    --spin var(--camera-duration) var(--camera-ease);
+}
+
+.stage.side .scene {
+  --tilt: var(--side-tilt);
+  --spin: var(--side-spin);
+}
+
+.floor { position: absolute; left: 0; top: 0; }
+
+.node {
+  position: absolute;
+  transform-style: preserve-3d;
+}
+
+.face {
+  position: absolute;
+  border: 1px solid var(--edge);
+}
+
+.face.top   { background: var(--face-top); }
+.face.east  { background: var(--face-east);  transform-origin: 0 0; transform: rotateY(-90deg); }
+.face.south { background: var(--face-south); transform-origin: 0 0; transform: rotateX(90deg); }
+
+/* The label undoes the camera rotation (reverse order, negative angles), so it always faces the viewer. */
+.label {
+  position: absolute;
+  transform-origin: 0 0;
+  transform:
+    translateZ(var(--label-z))
+    rotateZ(calc(-1 * var(--spin)))
+    rotateX(calc(-1 * var(--tilt)))
+    translate(-50%, calc(-100% - 6px));
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1.3;
+  background: var(--label-bg);
+  border: 1px solid var(--label-border);
+  border-radius: 6px;
+  padding: 4px 9px;
+  pointer-events: none;
+}
+
+.label small {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+}

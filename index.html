@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>homelab-atlas</title>
+  <link rel="stylesheet" href="src/style.css">
+</head>
+<body>
+  <header class="bar">
+    <span class="brand">homelab-atlas</span>
+    <div class="view-toggle" role="group" aria-label="Camera">
+      <button type="button" data-view="top" aria-pressed="false">Top</button>
+      <button type="button" data-view="side" aria-pressed="true">Side</button>
+    </div>
+  </header>
+
+  <main class="stage side" id="stage">
+    <div class="scene" id="scene"></div>
+  </main>
+
+  <!-- Classic scripts (not ES modules) so the page also opens straight from disk via file:// -->
+  <script src="examples/demo.js"></script>
+  <script src="src/scene.js"></script>
+</body>
+</html>
